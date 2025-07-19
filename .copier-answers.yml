@@ -1,0 +1,13 @@
+_commit: v1.5.1
+_src_path: gh:superlinear-ai/substrate
+author_email: chuckie_chen@outlook.com
+author_name: Chuckie Chen
+project_description: Automated USD asset assembly
+project_name: USDAssemble
+project_type: app
+project_url: https://github.com/ChuckieChen945/USDAssemble
+python_version: '3.12'
+typing: strict
+with_conventional_commits: true
+with_fastapi_api: true
+with_typer_cli: true

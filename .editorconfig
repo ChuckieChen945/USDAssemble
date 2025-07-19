@@ -1,0 +1,41 @@
+# EditorConfig (is awesome): http://EditorConfig.org
+
+# * top-most EditorConfig file
+root = true
+
+# Default for all files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Python files
+[*.py]
+indent_size = 4
+max_line_length = 88  # Matches Black default
+
+# Markdown files (e.g., README.md)
+[*.md]
+trim_trailing_whitespace = false
+indent_size = 2
+
+# YAML files (e.g., GitHub Actions, config files)
+[*.yml]
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_size = 2
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 4
+
+# Ignore generated files
+[*.min.js]
+insert_final_newline = false
+trim_trailing_whitespace = false
