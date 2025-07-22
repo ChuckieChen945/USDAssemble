@@ -42,7 +42,7 @@ def create_chessboard_main(output_path):
 
     # 设置 assetInfo
     prim.SetAssetInfo(
-        {"identifier": Sdf.AssetPath("./Chessboard.usd"), "name": "Chessboard"}
+        {"identifier": Sdf.AssetPath("./Chessboard.usda"), "name": "Chessboard"}
     )
 
     # 设置 inherits
@@ -52,7 +52,7 @@ def create_chessboard_main(output_path):
     Usd.ModelAPI(prim).SetKind("component")
 
     # 设置 payload
-    prim.GetPayloads().AddPayload("./Chessboard_payload.usd", "/Chessboard")
+    prim.GetPayloads().AddPayload("./Chessboard_payload.usda", "/Chessboard")
 
     # 设置 extentsHint
     extents_attr = prim.CreateAttribute("extentsHint", Sdf.ValueTypeNames.Float3Array)
@@ -84,7 +84,7 @@ def create_chessboard_payload(output_path):
 
     # 设置 subLayers
     stage.GetRootLayer().subLayerPaths = [
-        "./Chessboard_look.usd",
+        "./Chessboard_look.usda",
         "./Chessboard_geom.usd",
     ]
 
@@ -180,7 +180,7 @@ def create_material_definition(stage, materials_path):
 
 def create_materialx_wrapper(base_path):
     """创建 MaterialX 的 USD 包装文件"""
-    wrapper_file = os.path.join(base_path, "Chessboard_mat_wrapper.usd")
+    wrapper_file = os.path.join(base_path, "Chessboard_mat_wrapper.usda")
     print(f"Creating MaterialX wrapper: {wrapper_file}")
 
     try:
@@ -362,16 +362,16 @@ def assemble_chessboard_asset(base_path="./CHESSBOARD"):
     print("\n=== Assembling USD files ===")
 
     # 1. 创建主入口文件
-    main_file = os.path.join(base_path, "Chessboard.usd")
+    main_file = os.path.join(base_path, "Chessboard.usda")
     ensure_directory(main_file)
     create_chessboard_main(main_file)
 
     # 2. 创建 payload 文件
-    payload_file = os.path.join(base_path, "Chessboard_payload.usd")
+    payload_file = os.path.join(base_path, "Chessboard_payload.usda")
     create_chessboard_payload(payload_file)
 
     # 3. 创建外观文件
-    look_file = os.path.join(base_path, "Chessboard_look.usd")
+    look_file = os.path.join(base_path, "Chessboard_look.usda")
     create_chessboard_look(look_file, base_path)
 
     print("\n=== Assembly Summary ===")
