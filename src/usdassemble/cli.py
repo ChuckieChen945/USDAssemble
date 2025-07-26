@@ -154,8 +154,8 @@ def create_component_main(
             # 设置正确的kind值
             from pxr import Kind
 
-            # FIXME:
-            Kind.Registry.SetKind(component_prim, component_type.kind)
+            model_api = Usd.ModelAPI(component_prim)
+            model_api.SetKind(component_type.kind)
 
             # 保存修改
             stage.Save()
