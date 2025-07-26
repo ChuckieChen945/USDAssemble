@@ -702,6 +702,17 @@ wheels = [
 ]
 
 [[package]]
+name = "materialx"
+version = "1.39.3"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3c/14/5cfe0d83bb41a5c5b3fcdaeeddc88e654b8632b252b7894e856f6af5dc0d/materialx-1.39.3.tar.gz", hash = "sha256:ba908be7407f2b85aa1d80782a03ca3ce3fd7c040ce18c4e07d2e0ec27735118", size = 1550538, upload-time = "2025-03-07T22:51:41.452Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/65/43/d21d4f829ade67c1dbb7a913c61f1199a95f052a3d1ccf9648fe0dd6340b/materialx-1.39.3-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:dadfb695fc4e8893314b656866f3b24f28a00749078a3f245da725eb51ab6961", size = 5657800, upload-time = "2025-03-07T22:51:18.723Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/39/d7/8267004216560c5d12022dc535e0d69e113775755ac9cc60e48321173912/materialx-1.39.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6513b7d746038ec423c0c01554a76dff8872d33d53706ef52536644e8b708eb9", size = 8586036, upload-time = "2025-03-07T22:51:21.06Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/05/16/15f9e934fd9609e9f6d882aaf07467e555ab7f307c9efb46934ef1e23d85/materialx-1.39.3-cp312-cp312-win_amd64.whl", hash = "sha256:19190f5dd08f0f3fb21192db08e01bf5e36980e7111571c0c709022d97f8a0fb", size = 5199028, upload-time = "2025-03-07T22:51:22.806Z" },
+]
+
+[[package]]
 name = "matplotlib-inline"
 version = "0.1.7"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -1542,6 +1553,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi", extra = ["all"] },
     { name = "gunicorn" },
+    { name = "materialx" },
     { name = "poethepoet" },
     { name = "typer" },
     { name = "usd-core" },
@@ -1568,6 +1580,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", extras = ["all"], specifier = ">=0.115.6" },
     { name = "gunicorn", specifier = ">=23.0.0" },
+    { name = "materialx", specifier = ">=1.39.3" },
     { name = "poethepoet", specifier = ">=0.32.1" },
     { name = "typer", specifier = ">=0.15.1" },
     { name = "usd-core", specifier = ">=25.5.1" },

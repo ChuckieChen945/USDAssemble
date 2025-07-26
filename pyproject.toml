@@ -12,6 +12,7 @@ requires-python = ">=3.12,<4.0"
 dependencies = [
     "fastapi[all] (>=0.115.6)",
     "gunicorn (>=23.0.0)",
+    "materialx>=1.39.3",
     "poethepoet (>=0.32.1)",
     "typer (>=0.15.1)",
     "usd-core>=25.5.1",

@@ -120,10 +120,13 @@ def process_chessboard_material():
             for node in ng.getNodes():
                 print(f"  节点: {node.getName()} (类型: {node.getCategory()})")
                 for input_port in node.getInputs():
-                    if input_port.hasValue():
-                        print(
-                            f"    输入 {input_port.getName()}: {input_port.getValue()}"
-                        )
+                    try:
+                        value = input_port.getValue()
+                        if value:
+                            print(f"    输入 {input_port.getName()}: {value}")
+                    except:
+                        # 如果没有值或获取值失败，跳过
+                        pass
 
         print("\n材质节点:")
         for material in doc.getMaterials():

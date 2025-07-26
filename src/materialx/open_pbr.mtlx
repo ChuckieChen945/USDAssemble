@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<materialx version="1.38" colorspace="lin_rec709" >
+
+  <nodegraph name="compound1">
+    <image name="mtlximage13" type="color3" />
+    <image name="mtlximage16" type="float" />
+    <image name="mtlximage17" type="float" />
+    <image name="mtlximage15" type="vector3" />
+    <normalmap name="mtlxnormalmap12" type="vector3">
+      <input name="in" type="vector3" nodename="mtlximage15" />
+    </normalmap>
+    <output name="base_color_output" type="color3" nodename="mtlximage13" />
+    <output name="metalness_output" type="float" nodename="mtlximage16" />
+    <output name="roughness_output" type="float" nodename="mtlximage17" />
+    <output name="normal_output" type="vector3" nodename="mtlxnormalmap12" />
+  </nodegraph>
+
+
+  <open_pbr_surface name="open_pbr_surface1" type="surfaceshader">
+    <input name="base_color" type="color3" nodegraph="compound1" output="base_color_output" />
+    <input name="base_metalness" type="float" nodegraph="compound1" output="metalness_output" />
+    <input name="specular_roughness" type="float" nodegraph="compound1" output="roughness_output" />
+    <input name="geometry_normal" type="vector3" nodegraph="compound1" output="normal_output" />
+  </open_pbr_surface>
+
+
+
+  <surfacematerial name="OpenPBR_Surface1" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="open_pbr_surface1" />
+  </surfacematerial>
+
+</materialx>
