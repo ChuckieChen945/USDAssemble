@@ -5,7 +5,6 @@
 
 from pathlib import Path
 from string import Template
-from typing import List, Optional, Tuple
 
 import typer
 from pxr import Sdf, Usd
@@ -258,11 +257,12 @@ def create_assembly_main(
             component_ref_path = (
                 f"./{component_type.directory}/{component_name}/{component_name}.usd"
             )
-            component_prim = stage.DefinePrim(Sdf.Path(f"/{assembly_name}/{component_name}"))
+            component_prim = stage.OverridePrim(Sdf.Path(f"/{assembly_name}/{component_name}"))
+            component_prim.SetTypeName("Xform")
             component_prim.GetReferences().AddReference(component_ref_path)
 
         # 保存到最终路径
-        stage.Export(output_path)
+        stage.GetRootLayer().Export(output_path)
 
         # 清理临时文件
         temp_file.unlink(missing_ok=True)
