@@ -1,32 +1,38 @@
 <?xml version="1.0"?>
-<materialx version="1.38" colorspace="lin_rec709" >
+<materialx version="1.39" colorspace="lin_rec709" >
 
+  <!-- ${component_name} -->
   <nodegraph name="NG_${component_name}">
-    <image name="base_color" type="color3" />
-    <image name="metallic" type="float" />
-    <image name="roughness" type="float" />
-    <image name="normal" type="vector3" />
-    <normalmap name="mtlxnormalmap12" type="vector3">
+    <image name="base_color" type="color3">
+      <input name="file" type="filename" value="" colorspace="srgb_texture" />
+    </image>
+    <image name="metalness" type="float">
+      <input name="file" type="filename" value="" />
+    </image>
+    <image name="roughness" type="float">
+      <input name="file" type="filename" value="" />
+    </image>
+    <image name="normal" type="vector3">
+      <input name="file" type="filename" value="" />
+    </image>
+    <normalmap name="normal_map" type="vector3">
       <input name="in" type="vector3" nodename="normal" />
     </normalmap>
     <output name="base_color_output" type="color3" nodename="base_color" />
-    <output name="metalness_output" type="float" nodename="metallic" />
+    <output name="metalness_output" type="float" nodename="metalness" />
     <output name="roughness_output" type="float" nodename="roughness" />
-    <output name="normal_output" type="vector3" nodename="normal" />
+    <output name="normal_output" type="vector3" nodename="normal_map" />
   </nodegraph>
 
-
-  <open_pbr_surface name="${component_name}" type="surfaceshader">
+  <open_pbr_surface name="${component_name}" type="surfaceshader" nodedef="ND_open_pbr_surface_surfaceshader">
     <input name="base_color" type="color3" nodegraph="NG_${component_name}" output="base_color_output" />
     <input name="base_metalness" type="float" nodegraph="NG_${component_name}" output="metalness_output" />
     <input name="specular_roughness" type="float" nodegraph="NG_${component_name}" output="roughness_output" />
     <input name="geometry_normal" type="vector3" nodegraph="NG_${component_name}" output="normal_output" />
   </open_pbr_surface>
 
-
-
-  <surfacematerial name="M_${component_name}" type="material">
-    <input name="${component_name}" type="surfaceshader" nodename="open_pbr_surface1" />
+  <surfacematerial name="M_${component_name}" type="material"  nodedef="ND_surfacematerial">
+    <input name="surfaceshader" type="surfaceshader" nodename="${component_name}" />
   </surfacematerial>
 
 </materialx>

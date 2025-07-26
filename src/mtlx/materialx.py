@@ -6,7 +6,6 @@
 
 from pathlib import Path
 from string import Template
-from typing import Dict
 
 import MaterialX
 from rich.console import Console
@@ -79,8 +78,8 @@ def create_materialx_file(
             image_node = compound_ng.getNode(node_name)
             if image_node:
                 # 添加file输入
-                file_input = image_node.addInput("file", "filename")
-                file_input.setValue(texture_path)
+                file_input = image_node.getInput("file")
+                file_input.setValueString(texture_path)
 
                 added_textures.append(node_name)
             else:

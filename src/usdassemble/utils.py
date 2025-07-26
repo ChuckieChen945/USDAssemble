@@ -2,7 +2,7 @@
 
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Optional
 
 from rich.console import Console
 
@@ -14,7 +14,7 @@ SUPPORTED_TEXTURE_EXTENSIONS = [".jpg", ".png", ".exr"]
 # 纹理类型模式映射
 TEXTURE_PATTERNS = {
     "base_color": ["*base_color*"],
-    "metallic": ["*metallic*"],
+    "metalness": ["*metalness*"],
     "roughness": ["*roughness*"],
     "normal": ["*normal*"],
     "specular": ["*specular*"],
