@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <materialx version="1.38" colorspace="lin_rec709" >
 
-  <nodegraph name="compound1">
+  <nodegraph name="NG_${component_name}">
     <image name="base_color" type="color3" />
     <image name="metallic" type="float" />
     <image name="roughness" type="float" />
@@ -17,15 +17,15 @@
 
 
   <open_pbr_surface name="component_name" type="surfaceshader">
-    <input name="base_color" type="color3" nodegraph="compound1" output="base_color_output" />
-    <input name="base_metalness" type="float" nodegraph="compound1" output="metalness_output" />
-    <input name="specular_roughness" type="float" nodegraph="compound1" output="roughness_output" />
-    <input name="geometry_normal" type="vector3" nodegraph="compound1" output="normal_output" />
+    <input name="base_color" type="color3" nodegraph="NG_${component_name}" output="base_color_output" />
+    <input name="base_metalness" type="float" nodegraph="NG_${component_name}" output="metalness_output" />
+    <input name="specular_roughness" type="float" nodegraph="NG_${component_name}" output="roughness_output" />
+    <input name="geometry_normal" type="vector3" nodegraph="NG_${component_name}" output="normal_output" />
   </open_pbr_surface>
 
 
 
-  <surfacematerial name="M_component_name" type="material">
+  <surfacematerial name="M_${component_name}" type="material">
     <input name="surfaceshader" type="surfaceshader" nodename="open_pbr_surface1" />
   </surfacematerial>
 

@@ -4,26 +4,58 @@
 
 使用 Pixar OpenUSD API 和 MaterialX API 编写的 USD 资产自动化装配工具。
 
-## 功能特点
+## 🎯 功能特点
 
-- 🎯 **自动装配**: 根据目录结构自动生成 USD 文件
-- 🎨 **MaterialX 支持**: 自动检测纹理文件并生成 MaterialX 材质
-- 🏗️ **多层级支持**: 支持 Assembly、Component、Subcomponent 等 USD 概念
-- 🖥️ **命令行接口**: 基于 Typer 的简洁命令行工具
-- 🌐 **REST API**: 基于 FastAPI 的 Web 接口
-- 📦 **现代化**: 使用 uv 进行包管理
+- **🎨 基于模板**: 使用预定义模板确保一致的USD文件结构
+- **🔧 智能替换**: 使用Python string.Template进行动态内容替换
+- **🖼️ 纹理检测**: 自动检测并连接纹理文件到MaterialX节点
+- **🏗️ 多层级支持**: 支持 Assembly、Component、Subcomponent 等 USD 概念
+- **🖥️ 命令行接口**: 基于 Typer 的简洁命令行工具
+- **📦 现代化**: 使用 uv 进行包管理
 
-## 安装
+## 📁 模板系统
+
+项目使用模板驱动的方式生成USD文件，模板位于 `src/template/` 目录：
+
+```
+src/template/
+└── {$assembly_name}/
+    ├── {$assembly_name}.usda                    # Assembly主文件模板
+    └── components/
+        └── {$component_name}/                   # 组件模板目录
+            ├── {$component_name}.usd            # 组件主文件模板
+            ├── {$component_name}_payload.usd    # Payload文件模板
+            ├── {$component_name}_look.usd       # Look文件模板
+            └── {$component_name}_mat.mtlx       # MaterialX文件模板
+```
+
+### 模板变量
+
+- `{$assembly_name}`: Assembly名称（通常为项目目录名）
+- `{$component_name}`: Component名称（组件目录名）
+
+### 模板处理流程
+
+1. **读取模板**: 从 `src/template/` 读取对应的模板文件
+2. **变量替换**: 使用 `string.Template` 进行名称和路径替换
+3. **内容修改**: 使用 USD API 和 MaterialX API 修改具体内容
+4. **纹理连接**: 自动检测纹理文件并连接到MaterialX节点
+5. **文件输出**: 生成最终的USD和MaterialX文件
+
+## 🚀 安装
 
 ```bash
-# 使用 uv 安装依赖
+# 安装依赖（需要先安装 USD 和 MaterialX）
+conda install -c conda-forge usd-core materialx
+
+# 使用 uv 安装项目依赖
 uv sync
 
 # 或使用 pip
 pip install -e .
 ```
 
-## 命令行使用
+## 💻 命令行使用
 
 ### 主命令
 
@@ -44,161 +76,97 @@ usdassemble subcomponent ./some_subcomponent
 ### 目录结构示例
 
 ```
-CHESS_SET/
-│  chess_set.usda                    # ← 将被生成
+CHESS_SET/                               # Assembly目录
+│  CHESS_SET.usda                        # ← 将被生成（Assembly主文件）
 │
 └─components/
-    ├─Bishop/
-    │  │  Bishop.usda                # ← 将被生成
-    │  │  Bishop_geom.usd            # ← 用户提供
-    │  │  Bishop_look.usda           # ← 将被生成
-    │  │  Bishop_mat.mtlx            # ← 将被生成
-    │  │  Bishop_payload.usda        # ← 将被生成
+    ├─Bishop/                            # Component目录
+    │  │  Bishop.usd                     # ← 将被生成（组件主文件）
+    │  │  Bishop_geom.usd                # ← 用户提供（几何体文件）
+    │  │  Bishop_look.usd                # ← 将被生成（外观文件）
+    │  │  Bishop_mat.mtlx                # ← 将被生成（MaterialX文件）
+    │  │  Bishop_payload.usd             # ← 将被生成（Payload文件）
     │  │
-    │  └─textures/
-    │          bishop_black_base_color.jpg    # ← 用户提供
-    │          bishop_black_normal.jpg        # ← 用户提供
-    │          bishop_black_roughness.jpg     # ← 用户提供
-    │          bishop_shared_metallic.jpg     # ← 用户提供
-    │          ...
+    │  └─textures/                       # 纹理目录
+    │          bishop_base_color.jpg      # ← 用户提供
+    │          bishop_metallic.jpg        # ← 用户提供
+    │          bishop_normal.jpg          # ← 用户提供
+    │          bishop_roughness.jpg       # ← 用户提供
     │
     ├─Chessboard/
-    │  │  Chessboard.usda            # ← 将被生成
-    │  │  Chessboard_geom.usd        # ← 用户提供
-    │  │  Chessboard_look.usda       # ← 将被生成
-    │  │  Chessboard_mat.mtlx        # ← 将被生成
-    │  │  Chessboard_payload.usda    # ← 将被生成
+    │  │  Chessboard.usd                 # ← 将被生成
+    │  │  Chessboard_geom.usd            # ← 用户提供
+    │  │  Chessboard_look.usd            # ← 将被生成
+    │  │  Chessboard_mat.mtlx            # ← 将被生成
+    │  │  Chessboard_payload.usd         # ← 将被生成
     │  │
     │  └─textures/
-    │          chessboard_base_color.jpg      # ← 用户提供
-    │          chessboard_metallic.jpg        # ← 用户提供
-    │          chessboard_normal.jpg          # ← 用户提供
-    │          chessboard_roughness.jpg       # ← 用户提供
+    │          chessboard_base_color.jpg  # ← 用户提供
+    │          chessboard_metallic.jpg    # ← 用户提供
+    │          chessboard_normal.jpg      # ← 用户提供
+    │          chessboard_roughness.jpg   # ← 用户提供
     │
     └─...更多棋子组件
 ```
 
-## REST API 使用
+## 🖼️ 纹理文件自动检测
 
-### 启动服务器
+工具会自动扫描 `textures/` 或 `tex/` 目录，检测以下类型的纹理文件：
 
-```bash
-# 开发模式
-uvicorn src.usdassemble.api:app --reload --port 8000
+| 纹理类型         | 检测模式         | MaterialX节点类型 |
+| ---------------- | ---------------- | ----------------- |
+| **Base Color**   | `*base_color*`   | `color3`          |
+| **Metallic**     | `*metallic*`     | `float`           |
+| **Roughness**    | `*roughness*`    | `float`           |
+| **Normal**       | `*normal*`       | `vector3`         |
+| **Specular**     | `*specular*`     | `float`           |
+| **Diffuse**      | `*diffuse*`      | `color3`          |
+| **Emissive**     | `*emissive*`     | `color3`          |
+| **Displacement** | `*displacement*` | `float`           |
+| **Opacity**      | `*opacity*`      | `float`           |
+| **Occlusion**    | `*occlusion*`    | `float`           |
 
-# 生产模式
-uvicorn src.usdassemble.api:app --host 0.0.0.0 --port 8000
-```
+支持的文件格式：`.jpg`, `.png`, `.exr`
 
-### API 端点
+## 📄 生成的文件内容示例
 
-#### 1. 获取 API 信息
-```http
-GET /
-```
+### Assembly 主文件 (CHESS_SET.usda)
+```usda
+#usda 1.0
+(
+    defaultPrim = "CHESS_SET"
+    doc = "Generated from template"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
 
-#### 2. 装配 Assembly
-```http
-POST /assemble/assembly
-Content-Type: application/json
-
+class "__class__"
 {
-    "base_path": "/path/to/CHESS_SET",
-    "assembly_name": "chess_set"  // 可选，默认为目录名
+    class "CHESS_SET"
+    {
+    }
+}
+
+def Xform "CHESS_SET" (
+    kind = "assembly"
+    prepend inherits = </__class__/CHESS_SET>
+)
+{
+    def Xform "Chessboard" (
+        add references = @./components/Chessboard/Chessboard.usd@
+    )
+    {
+    }
+    
+    def Xform "Bishop" (
+        add references = @./components/Bishop/Bishop.usd@
+    )
+    {
+    }
 }
 ```
 
-#### 3. 装配 Component
-```http
-POST /assemble/component
-Content-Type: application/json
-
-{
-    "base_path": "/path/to/component",
-    "component_name": "Chessboard"  // 可选，默认为目录名
-}
-```
-
-#### 4. 装配 Subcomponent
-```http
-POST /assemble/subcomponent
-Content-Type: application/json
-
-{
-    "base_path": "/path/to/subcomponent",
-    "subcomponent_name": "SubPart"  // 可选，默认为目录名
-}
-```
-
-#### 5. 扫描组件
-```http
-GET /scan/components?base_path=/path/to/assembly
-```
-
-#### 6. 获取组件信息
-```http
-GET /info/component?component_path=/path/to/component
-```
-
-#### 7. 下载生成的文件
-```http
-# 下载 Assembly 文件
-GET /download/assembly?base_path=/path/to/assembly
-
-# 下载 Component 文件
-GET /download/component?base_path=/path/to/component&component_name=Chessboard
-GET /download/payload?base_path=/path/to/component&component_name=Chessboard
-GET /download/look?base_path=/path/to/component&component_name=Chessboard
-GET /download/material?base_path=/path/to/component&component_name=Chessboard
-```
-
-#### 8. 健康检查
-```http
-GET /health
-```
-
-### API 响应示例
-
-#### 装配响应
-```json
-{
-    "success": true,
-    "message": "Assembly chess_set 装配完成",
-    "generated_files": [
-        "components/Chessboard/Chessboard.usda",
-        "components/Chessboard/Chessboard_payload.usda",
-        "components/Chessboard/Chessboard_look.usda",
-        "components/Chessboard/Chessboard_mat.mtlx",
-        "chess_set.usda"
-    ],
-    "components": ["Chessboard", "Bishop", "King", ...]
-}
-```
-
-#### 组件信息响应
-```json
-{
-    "name": "Chessboard",
-    "path": "/path/to/Chessboard",
-    "has_geometry": true,
-    "texture_files": {
-        "base_color": "textures/chessboard_base_color.jpg",
-        "metallic": "textures/chessboard_metallic.jpg",
-        "roughness": "textures/chessboard_roughness.jpg",
-        "normal": "textures/chessboard_normal.jpg"
-    },
-    "generated_files": [
-        "Chessboard.usda",
-        "Chessboard_payload.usda",
-        "Chessboard_look.usda",
-        "Chessboard_mat.mtlx"
-    ]
-}
-```
-
-## 生成的文件内容
-
-### 主入口文件 (Component.usda)
+### Component 主文件 (Chessboard.usd)
 ```usda
 #usda 1.0
 (
@@ -217,93 +185,50 @@ class "__class__"
 def Xform "Chessboard" (
     prepend apiSchemas = ["GeomModelAPI"]
     assetInfo = {
-        asset identifier = @./Chessboard.usda@
+        asset identifier = @./Chessboard.usd@
         string name = "Chessboard"
     }
     prepend inherits = </__class__/Chessboard>
     kind = "component"
-    payload = @./Chessboard_payload.usda@</Chessboard>
+    payload = @./Chessboard_payload.usd@</Chessboard>
 )
 {
     float3[] extentsHint = [(-0.35270807, 0, -0.35270807), (0.35270807, 0.01851505, 0.35270807)]
 }
 ```
 
-### Payload 文件 (Component_payload.usda)
-```usda
-#usda 1.0
-(
-    defaultPrim = "Chessboard"
-    metersPerUnit = 1
-    subLayers = [
-        @./Chessboard_look.usda@,
-        @./Chessboard_geom.usd@
-    ]
-    upAxis = "Y"
-)
-```
-
-### Look 文件 (Component_look.usda)
-```usda
-#usda 1.0
-(
-    defaultPrim = "Chessboard"
-    metersPerUnit = 1
-    upAxis = "Y"
-)
-
-over "Chessboard"
-{
-    def Scope "Materials" (
-        prepend references = @./Chessboard_mat.mtlx@</MaterialX/Materials>
-    )
-    {
-    }
-
-    over "Geom"
-    {
-        over "Render" (
-            apiSchemas = ["MaterialBindingAPI"]
-        )
-        {
-            rel material:binding = </Chessboard/Materials/M_Chessboard>
-        }
-    }
-}
-```
-
-### MaterialX 文件 (Component_mat.mtlx)
+### MaterialX 文件 (Chessboard_mat.mtlx)
 ```xml
 <?xml version="1.0"?>
 <materialx version="1.38" colorspace="lin_rec709">
   <nodegraph name="NG_Chessboard">
-    <image name="base_color_image" type="color3">
+    <image name="base_color" type="color3">
       <input name="file" type="filename" value="textures/chessboard_base_color.jpg" colorspace="srgb_texture" />
     </image>
-    <image name="metallic_image" type="float">
+    <image name="metallic" type="float">
       <input name="file" type="filename" value="textures/chessboard_metallic.jpg" />
     </image>
-    <image name="roughness_image" type="float">
+    <image name="roughness" type="float">
       <input name="file" type="filename" value="textures/chessboard_roughness.jpg" />
     </image>
-    <image name="normal_image" type="vector3">
+    <image name="normal" type="vector3">
       <input name="file" type="filename" value="textures/chessboard_normal.jpg" />
     </image>
-    <normalmap name="normal_map" type="vector3">
-      <input name="in" type="vector3" nodename="normal_image" />
+    <normalmap name="mtlxnormalmap12" type="vector3">
+      <input name="in" type="vector3" nodename="normal" />
     </normalmap>
-    <output name="base_color_output" type="color3" nodename="base_color_image" />
-    <output name="metalness_output" type="float" nodename="metallic_image" />
-    <output name="roughness_output" type="float" nodename="roughness_image" />
-    <output name="normal_output" type="vector3" nodename="normal_map" />
+    <output name="base_color_output" type="color3" nodename="base_color" />
+    <output name="metalness_output" type="float" nodename="metallic" />
+    <output name="roughness_output" type="float" nodename="roughness" />
+    <output name="normal_output" type="vector3" nodename="mtlxnormalmap12" />
   </nodegraph>
 
-  <standard_surface name="Chessboard" type="surfaceshader">
+  <open_pbr_surface name="Chessboard" type="surfaceshader">
     <input name="base_color" type="color3" nodegraph="NG_Chessboard" output="base_color_output" />
-    <input name="metalness" type="float" nodegraph="NG_Chessboard" output="metalness_output" />
+    <input name="base_metalness" type="float" nodegraph="NG_Chessboard" output="metalness_output" />
     <input name="specular_roughness" type="float" nodegraph="NG_Chessboard" output="roughness_output" />
-    <input name="normal" type="vector3" nodegraph="NG_Chessboard" output="normal_output" />
-  </standard_surface>
+    <input name="geometry_normal" type="vector3" nodegraph="NG_Chessboard" output="normal_output" />
+  </open_pbr_surface>
 
   <surfacematerial name="M_Chessboard" type="material">
     <input name="surfaceshader" type="surfaceshader" nodename="Chessboard" />
@@ -311,35 +236,66 @@ over "Chessboard"
 </materialx>
 ```
 
-## 纹理文件自动检测
+## 🧪 测试
 
-工具会自动扫描 `textures/` 或 `tex/` 目录，检测以下类型的纹理文件：
+运行测试脚本验证模板系统：
 
-- **Base Color**: `*base_color*`, `*diffuse*`, `*albedo*`, `*color*`
-- **Metallic**: `*metallic*`, `*metal*`
-- **Roughness**: `*roughness*`, `*rough*`
-- **Normal**: `*normal*`, `*norm*`
-- **Specular**: `*specular*`, `*spec*`
-- **Scattering**: `*scattering*`, `*sss*`
+```bash
+python test_templates.py
+```
 
-支持的文件格式：`.jpg`, `.png`, `.exr`
+测试将验证：
+- 模板文件存在性
+- 纹理检测功能
+- 组件装配流程
+- Assembly装配流程
 
-## 开发
+## 🛠️ 开发
 
 ```bash
 # 安装开发依赖
 uv sync --dev
-
-# 运行测试
-pytest tests/
 
 # 代码格式化
 ruff format src/
 
 # 代码检查
 ruff check src/
+
+# 类型检查
+mypy src/
 ```
 
-## 许可证
+## 📚 技术架构
+
+### 核心模块
+
+- **`cli.py`**: 命令行接口和主要装配逻辑
+- **`mtlx/materialx.py`**: MaterialX文件处理和纹理连接
+- **`template/`**: USD文件模板目录
+
+### 处理流程
+
+1. **扫描阶段**: 扫描目录结构，检测组件和纹理文件
+2. **模板阶段**: 读取模板文件，进行变量替换
+3. **修改阶段**: 使用USD/MaterialX API修改具体内容
+4. **输出阶段**: 生成最终的USD和MaterialX文件
+
+### 关键特性
+
+- **模板驱动**: 确保生成文件的一致性和正确性
+- **智能检测**: 自动识别目录类型和纹理文件
+- **API集成**: 深度集成USD和MaterialX API
+- **类型安全**: 全面的类型注解和错误处理
+
+## 📋 TODO
+
+- [ ] 支持更多纹理类型和格式
+- [ ] 添加extentsHint自动计算
+- [ ] 实现嵌套组件的递归处理
+- [ ] 添加自定义模板支持
+- [ ] 性能优化和并行处理
+
+## �� 许可证
 
 MIT License

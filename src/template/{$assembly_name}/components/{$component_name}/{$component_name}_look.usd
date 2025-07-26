@@ -1,14 +1,14 @@
 #usda 1.0
 (
-    defaultPrim = "component_name"
+    defaultPrim = "${component_name}"
     metersPerUnit = 1
     upAxis = "Y"
 )
 
-over "component_name"
+over "${component_name}"
 {
     def Scope "Materials" (
-        prepend references = @./component_name_mat.mtlx@</MaterialX/Materials>
+        prepend references = @./${component_name}_mat.mtlx@</MaterialX/Materials>
     )
     {
     }
@@ -19,7 +19,7 @@ over "component_name"
             apiSchemas = ["MaterialBindingAPI"]
         )
         {
-            rel material:binding = </component_name/Materials/M_component_name>
+            rel material:binding = </${component_name}/Materials/M_${component_name}>
         }
     }
 }

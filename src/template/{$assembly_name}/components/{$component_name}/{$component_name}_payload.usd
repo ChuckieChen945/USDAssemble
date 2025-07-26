@@ -1,10 +1,10 @@
 #usda 1.0
 (
-    defaultPrim = "Chessboard"
+    defaultPrim = "${component_name}"
     metersPerUnit = 1
     subLayers = [
-        @./Chessboard_look.usd@,
-        @./Chessboard_geom.usd@
+        @./${component_name}_look.usd@,
+        @./${component_name}_geom.usd@
     ]
     upAxis = "Y"
 )

@@ -1,26 +1,26 @@
 #usda 1.0
 (
-    defaultPrim = "Chessboard"
+    defaultPrim = "${component_name}"
     metersPerUnit = 1
     upAxis = "Y"
 )
 
 class "__class__"
 {
-    class "Chessboard"
+    class "${component_name}"
     {
     }
 }
 
-def Xform "Chessboard" (
+def Xform "${component_name}" (
     prepend apiSchemas = ["GeomModelAPI"]
     assetInfo = {
-        asset identifier = @./Chessboard.usd@
-        string name = "Chessboard"
+        asset identifier = @./${component_name}.usd@
+        string name = "${component_name}"
     }
-    prepend inherits = </__class__/Chessboard>
+    prepend inherits = </__class__/${component_name}>
     kind = "component"
-    payload = @./Chessboard_payload.usd@</Chessboard>
+    payload = @./${component_name}_payload.usd@</${component_name}>
 )
 {
     float3[] extentsHint = [(-0.35270807, 0, -0.35270807), (0.35270807, 0.01851505, 0.35270807)]
