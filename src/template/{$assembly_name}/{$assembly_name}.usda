@@ -18,10 +18,5 @@ def Xform "${assembly_name}" (
     prepend inherits = </__class__/${assembly_name}>
 )
 {
-    def Xform "${component_name}" (
-        add references = @./components/${component_name}/${component_name}.usd@
-    )
-    {
-    }
 
 }

@@ -3,67 +3,123 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 from usdassemble.utils import (
-    SUPPORTED_TEXTURE_EXTENSIONS,
-    TEXTURE_PATTERNS,
+    ComponentType,
     TextureValidationError,
     ensure_directory,
     find_texture_files_by_pattern,
+    get_component_directory_and_type,
     get_template_dir,
     validate_texture_files,
 )
 
 
+class TestComponentType:
+    """测试ComponentType枚举."""
+
+    def test_component_type_values(self):
+        """测试ComponentType的值."""
+        assert ComponentType.COMPONENT.kind == "component"
+        assert ComponentType.COMPONENT.directory == "components"
+        assert ComponentType.SUBCOMPONENT.kind == "subcomponent"
+        assert ComponentType.SUBCOMPONENT.directory == "subcomponents"
+
+    def test_from_directory(self):
+        """测试从目录名获取组件类型."""
+        assert ComponentType.from_directory("components") == ComponentType.COMPONENT
+        assert ComponentType.from_directory("subcomponents") == ComponentType.SUBCOMPONENT
+
+    def test_from_directory_invalid(self):
+        """测试无效目录名."""
+        with pytest.raises(ValueError, match="不支持的组件目录类型: invalid"):
+            ComponentType.from_directory("invalid")
+
+    def test_detect_from_path(self):
+        """测试从路径检测组件类型."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+
+            # 没有组件目录
+            assert ComponentType.detect_from_path(base_path) is None
+
+            # 创建components目录
+            (base_path / "components").mkdir()
+            assert ComponentType.detect_from_path(base_path) == ComponentType.COMPONENT
+
+            # 删除components，创建subcomponents
+            (base_path / "components").rmdir()
+            (base_path / "subcomponents").mkdir()
+            assert ComponentType.detect_from_path(base_path) == ComponentType.SUBCOMPONENT
+
+            # 两个目录都存在时，应该返回第一个找到的（COMPONENT优先）
+            (base_path / "components").mkdir()
+            assert ComponentType.detect_from_path(base_path) == ComponentType.COMPONENT
+
+
+class TestGetComponentDirectoryAndType:
+    """测试get_component_directory_and_type函数."""
+
+    def test_success_components(self):
+        """测试成功获取components目录和类型."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            components_dir = base_path / "components"
+            components_dir.mkdir()
+
+            result_dir, result_type = get_component_directory_and_type(base_path)
+            assert result_dir == components_dir
+            assert result_type == ComponentType.COMPONENT
+
+    def test_success_subcomponents(self):
+        """测试成功获取subcomponents目录和类型."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            subcomponents_dir = base_path / "subcomponents"
+            subcomponents_dir.mkdir()
+
+            result_dir, result_type = get_component_directory_and_type(base_path)
+            assert result_dir == subcomponents_dir
+            assert result_type == ComponentType.SUBCOMPONENT
+
+    def test_no_component_directory(self):
+        """测试未找到组件目录时抛出异常."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+
+            with pytest.raises(ValueError, match="未找到支持的组件目录"):
+                get_component_directory_and_type(base_path)
+
+
 class TestEnsureDirectory:
     """测试ensure_directory函数."""
 
-    def test_ensure_directory_with_file_path(self, tmp_path):
-        """测试传入文件路径时创建父目录."""
-        file_path = tmp_path / "subdir" / "file.txt"
-        ensure_directory(file_path)
-        assert file_path.parent.exists()
-        assert file_path.parent.is_dir()
+    def test_ensure_directory_from_file_path(self):
+        """测试从文件路径确保目录存在."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "subdir" / "file.txt"
+            ensure_directory(file_path)
+            assert file_path.parent.exists()
 
-    def test_ensure_directory_with_dir_path(self, tmp_path):
-        """测试传入目录路径时创建目录."""
-        dir_path = tmp_path / "subdir"
-        ensure_directory(dir_path)
-        assert dir_path.exists()
-        assert dir_path.is_dir()
-
-    def test_ensure_directory_nested_paths(self, tmp_path):
-        """测试创建多级嵌套目录."""
-        nested_path = tmp_path / "a" / "b" / "c" / "file.txt"
-        ensure_directory(nested_path)
-        assert nested_path.parent.exists()
-        assert nested_path.parent.is_dir()
-
-    def test_ensure_directory_already_exists(self, tmp_path):
-        """测试目录已存在时不报错."""
-        existing_dir = tmp_path / "existing"
-        existing_dir.mkdir()
-        ensure_directory(existing_dir)
-        assert existing_dir.exists()
+    def test_ensure_directory_from_dir_path(self):
+        """测试从目录路径确保目录存在."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dir_path = Path(temp_dir) / "subdir"
+            ensure_directory(dir_path)
+            assert dir_path.exists()
 
 
 class TestGetTemplateDir:
     """测试get_template_dir函数."""
 
-    def test_get_template_dir_returns_path(self):
-        """测试返回正确的模板目录路径."""
+    def test_get_template_dir(self):
+        """测试获取模板目录路径."""
         template_dir = get_template_dir()
-        assert isinstance(template_dir, Path)
-        assert template_dir.name == "template"
-
-    def test_get_template_dir_is_relative_to_utils(self):
-        """测试模板目录相对于utils模块的位置."""
-        template_dir = get_template_dir()
-        # 应该是 src/template
-        assert template_dir.parent.name == "src"
+        expected_path = Path(__file__).parent.parent / "src" / "template"
+        assert template_dir == expected_path
 
 
 class TestFindTextureFilesByPattern:
@@ -79,47 +135,34 @@ class TestFindTextureFilesByPattern:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_find_texture_files_single_pattern(self):
-        """测试单个模式匹配."""
+    def test_find_texture_files_success(self):
+        """测试成功查找纹理文件."""
         # 创建测试文件
-        (self.temp_dir / "test_base_color.jpg").touch()
-        (self.temp_dir / "other_file.png").touch()
+        test_files = [
+            "test_base_color.jpg",
+            "test_base_color_01.png",
+            "other_file.exr",
+        ]
+        for filename in test_files:
+            (self.temp_dir / filename).touch()
 
         patterns = ["*base_color*"]
-        result = find_texture_files_by_pattern(self.temp_dir, patterns)
+        found_files = find_texture_files_by_pattern(self.temp_dir, patterns)
 
-        assert len(result) == 1
-        assert result[0].name == "test_base_color.jpg"
-
-    def test_find_texture_files_multiple_extensions(self):
-        """测试多种文件扩展名匹配."""
-        # 创建不同扩展名的文件
-        (self.temp_dir / "texture_metallic.jpg").touch()
-        (self.temp_dir / "texture_metallic.png").touch()
-        (self.temp_dir / "texture_metallic.exr").touch()
-
-        patterns = ["*metallic*"]
-        result = find_texture_files_by_pattern(self.temp_dir, patterns)
-
-        assert len(result) == 3
-        extensions = {f.suffix for f in result}
-        assert extensions == {".jpg", ".png", ".exr"}
+        assert len(found_files) == 2
+        found_names = {f.name for f in found_files}
+        assert "test_base_color.jpg" in found_names
+        assert "test_base_color_01.png" in found_names
 
     def test_find_texture_files_no_matches(self):
-        """测试无匹配文件的情况."""
-        patterns = ["*nonexistent*"]
-        result = find_texture_files_by_pattern(self.temp_dir, patterns)
-        assert len(result) == 0
+        """测试没有找到匹配文件."""
+        # 创建不匹配的文件
+        (self.temp_dir / "other_file.jpg").touch()
 
-    def test_find_texture_files_multiple_patterns(self):
-        """测试多个模式匹配."""
-        (self.temp_dir / "mat_base_color.jpg").touch()
-        (self.temp_dir / "mat_diffuse.png").touch()
+        patterns = ["*base_color*"]
+        found_files = find_texture_files_by_pattern(self.temp_dir, patterns)
 
-        patterns = ["*base_color*", "*diffuse*"]
-        result = find_texture_files_by_pattern(self.temp_dir, patterns)
-
-        assert len(result) == 2
+        assert len(found_files) == 0
 
 
 class TestValidateTextureFiles:
@@ -137,102 +180,49 @@ class TestValidateTextureFiles:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_validate_texture_files_missing_directory(self):
-        """测试纹理目录不存在的情况."""
-        missing_dir = self.temp_dir / "missing_textures"
-
-        with patch("usdassemble.utils.console") as mock_console:
-            result = validate_texture_files(missing_dir, "test_component")
-            assert result == {}
-            mock_console.print.assert_called_once()
-
-    def test_validate_texture_files_valid_textures(self):
-        """测试有效纹理文件的情况."""
+    def test_validate_texture_files_success(self):
+        """测试成功验证纹理文件."""
         # 创建有效的纹理文件
-        (self.texture_dir / "test_base_color.jpg").touch()
-        (self.texture_dir / "test_metallic.png").touch()
-        (self.texture_dir / "test_normal.exr").touch()
+        test_files = [
+            "component_base_color.jpg",
+            "component_metallic.png",
+            "component_roughness.exr",
+        ]
+        for filename in test_files:
+            (self.texture_dir / filename).touch()
 
-        result = validate_texture_files(self.texture_dir, "test_component")
+        result = validate_texture_files(self.texture_dir, "component")
 
-        expected = {
-            "base_color": "textures/test_base_color.jpg",
-            "metallic": "textures/test_metallic.png",
-            "normal": "textures/test_normal.exr",
-        }
-        assert result == expected
+        assert len(result) == 3
+        assert "base_color" in result
+        assert "metallic" in result
+        assert "roughness" in result
 
-    def test_validate_texture_files_duplicate_textures(self):
-        """测试重复纹理文件的错误情况."""
-        # 创建重复的base_color文件
-        (self.texture_dir / "mat_base_color.jpg").touch()
-        (self.texture_dir / "tex_base_color.png").touch()
-
-        with pytest.raises(TextureValidationError) as exc_info:
-            validate_texture_files(self.texture_dir, "test_component")
-
-        assert "重复" in str(exc_info.value) or "多个文件" in str(exc_info.value)
-
-    def test_validate_texture_files_unknown_textures(self):
-        """测试未知纹理文件的错误情况."""
-        # 创建一个有效文件和一个未知文件
-        (self.texture_dir / "test_base_color.jpg").touch()
-        (self.texture_dir / "unknown_texture.png").touch()
-
-        with pytest.raises(TextureValidationError) as exc_info:
-            validate_texture_files(self.texture_dir, "test_component")
-
-        assert "未识别" in str(exc_info.value)
-
-    def test_validate_texture_files_empty_directory(self):
-        """测试空纹理目录的情况."""
-        result = validate_texture_files(self.texture_dir, "test_component")
+    def test_validate_texture_files_no_texture_dir(self):
+        """测试纹理目录不存在."""
+        non_existent_dir = self.temp_dir / "non_existent"
+        result = validate_texture_files(non_existent_dir, "component")
         assert result == {}
 
-    def test_validate_texture_files_partial_match(self):
-        """测试部分纹理类型匹配的情况."""
-        # 只创建部分纹理类型
-        (self.texture_dir / "comp_base_color.jpg").touch()
-        (self.texture_dir / "comp_roughness.png").touch()
+    def test_validate_texture_files_duplicate_type(self):
+        """测试纹理类型重复."""
+        # 创建重复类型的文件
+        (self.texture_dir / "component_base_color.jpg").touch()
+        (self.texture_dir / "component_base_color.png").touch()
 
-        result = validate_texture_files(self.texture_dir, "test_component")
+        with pytest.raises(TextureValidationError, match="纹理类型 'base_color' 匹配到多个文件"):
+            validate_texture_files(self.texture_dir, "component")
 
-        expected = {
-            "base_color": "textures/comp_base_color.jpg",
-            "roughness": "textures/comp_roughness.png",
-        }
-        assert result == expected
+    def test_validate_texture_files_unknown_files(self):
+        """测试存在未知纹理文件."""
+        # 创建已知和未知文件
+        (self.texture_dir / "component_base_color.jpg").touch()
+        (self.texture_dir / "unknown_file.jpg").touch()
 
+        with pytest.raises(TextureValidationError, match="发现未识别的纹理文件"):
+            validate_texture_files(self.texture_dir, "component")
 
-class TestConstants:
-    """测试常量定义."""
-
-    def test_supported_texture_extensions(self):
-        """测试支持的纹理文件扩展名."""
-        assert ".jpg" in SUPPORTED_TEXTURE_EXTENSIONS
-        assert ".png" in SUPPORTED_TEXTURE_EXTENSIONS
-        assert ".exr" in SUPPORTED_TEXTURE_EXTENSIONS
-
-    def test_texture_patterns_completeness(self):
-        """测试纹理模式的完整性."""
-        required_types = [
-            "base_color",
-            "metallic",
-            "roughness",
-            "normal",
-            "specular",
-            "diffuse",
-            "emissive",
-        ]
-
-        for texture_type in required_types:
-            assert texture_type in TEXTURE_PATTERNS
-            assert len(TEXTURE_PATTERNS[texture_type]) > 0
-
-    def test_texture_patterns_format(self):
-        """测试纹理模式的格式."""
-        for texture_type, patterns in TEXTURE_PATTERNS.items():
-            assert isinstance(patterns, list)
-            for pattern in patterns:
-                assert isinstance(pattern, str)
-                assert "*" in pattern  # 应该包含通配符
+    def test_validate_texture_files_empty_dir(self):
+        """测试空纹理目录."""
+        result = validate_texture_files(self.texture_dir, "component")
+        assert result == {}

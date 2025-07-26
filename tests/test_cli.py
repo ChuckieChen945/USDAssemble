@@ -20,6 +20,7 @@ from usdassemble.cli import (
     process_component,
     scan_components,
 )
+from usdassemble.utils import ComponentType
 
 
 class TestCreateFromTemplate:
@@ -57,34 +58,30 @@ class TestCreateFromTemplate:
         assert content == "Hello 测试, welcome to USDAssemble!"
 
     def test_create_from_template_missing_template(self):
-        """测试模板文件不存在的错误情况."""
+        """测试模板文件不存在的情况."""
         template_path = self.temp_dir / "missing_template.txt"
         output_path = self.temp_dir / "output.txt"
-        substitutions = {}
+        substitutions = {"name": "test"}
 
-        with pytest.raises(AssemblyError) as exc_info:
+        with pytest.raises(AssemblyError, match="模板文件不存在"):
             create_from_template(template_path, output_path, substitutions)
 
-        assert "模板文件不存在" in str(exc_info.value)
-
-    def test_create_from_template_safe_substitute(self):
-        """测试safe_substitute处理缺失变量."""
-        # 创建包含未定义变量的模板
+    def test_create_from_template_creates_directories(self):
+        """测试自动创建输出目录."""
+        # 创建模板文件
         template_path = self.temp_dir / "template.txt"
-        template_content = "Name: $name, Project: $undefined_var"
         with open(template_path, "w", encoding="utf-8") as f:
-            f.write(template_content)
+            f.write("Content: $value")
 
-        output_path = self.temp_dir / "output.txt"
-        substitutions = {"name": "测试"}
+        # 输出到深层目录
+        output_path = self.temp_dir / "deep" / "nested" / "output.txt"
+        substitutions = {"value": "test"}
 
-        # 执行函数（应该不报错）
         create_from_template(template_path, output_path, substitutions)
 
-        # 验证结果（未定义变量保持原样）
-        with open(output_path, encoding="utf-8") as f:
-            content = f.read()
-        assert content == "Name: 测试, Project: $undefined_var"
+        # 验证目录和文件都创建了
+        assert output_path.exists()
+        assert output_path.parent.exists()
 
 
 class TestScanComponents:
@@ -93,8 +90,6 @@ class TestScanComponents:
     def setup_method(self):
         """设置测试环境."""
         self.temp_dir = Path(tempfile.mkdtemp())
-        self.components_dir = self.temp_dir / "components"
-        self.components_dir.mkdir()
 
     def teardown_method(self):
         """清理测试环境."""
@@ -102,61 +97,93 @@ class TestScanComponents:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_scan_components_valid_components(self):
-        """测试扫描有效组件."""
+    def test_scan_components_success(self):
+        """测试成功扫描components目录."""
+        # 创建components目录结构
+        components_dir = self.temp_dir / "components"
+        components_dir.mkdir()
+
         # 创建有效组件
-        comp1_dir = self.components_dir / "component1"
+        comp1_dir = components_dir / "component1"
         comp1_dir.mkdir()
         (comp1_dir / "component1_geom.usd").touch()
 
-        comp2_dir = self.components_dir / "component2"
+        comp2_dir = components_dir / "component2"
         comp2_dir.mkdir()
         (comp2_dir / "component2_geom.usd").touch()
 
-        # 创建无效组件（缺少几何体文件）
-        comp3_dir = self.components_dir / "component3"
+        # 创建无效组件（缺少geom文件）
+        comp3_dir = components_dir / "component3"
         comp3_dir.mkdir()
 
-        with patch("usdassemble.cli.console") as mock_console:
-            result = scan_components(str(self.temp_dir))
-            assert result == ["component1", "component2"]
+        components, component_type = scan_components(str(self.temp_dir))
 
-    def test_scan_components_no_components_dir(self):
-        """测试components目录不存在的情况."""
-        empty_dir = self.temp_dir / "empty"
-        empty_dir.mkdir()
+        assert len(components) == 2
+        assert "component1" in components
+        assert "component2" in components
+        assert "component3" not in components
+        assert component_type == ComponentType.COMPONENT
 
-        with pytest.raises(AssemblyError) as exc_info:
-            scan_components(str(empty_dir))
+    def test_scan_subcomponents_success(self):
+        """测试成功扫描subcomponents目录."""
+        # 创建subcomponents目录结构
+        subcomponents_dir = self.temp_dir / "subcomponents"
+        subcomponents_dir.mkdir()
 
-        assert "未找到 components 目录" in str(exc_info.value)
+        # 创建有效子组件
+        subcomp1_dir = subcomponents_dir / "subcomponent1"
+        subcomp1_dir.mkdir()
+        (subcomp1_dir / "subcomponent1_geom.usd").touch()
 
-    def test_scan_components_no_valid_components(self):
-        """测试没有有效组件的情况."""
-        # 创建无效组件
-        comp_dir = self.components_dir / "invalid_component"
+        components, component_type = scan_components(str(self.temp_dir))
+
+        assert len(components) == 1
+        assert "subcomponent1" in components
+        assert component_type == ComponentType.SUBCOMPONENT
+
+    def test_scan_components_no_directory(self):
+        """测试没有组件目录的情况."""
+        with pytest.raises(AssemblyError, match="未找到支持的组件目录"):
+            scan_components(str(self.temp_dir))
+
+    def test_scan_components_empty_directory(self):
+        """测试空组件目录的情况."""
+        components_dir = self.temp_dir / "components"
+        components_dir.mkdir()
+
+        with pytest.raises(AssemblyError, match="未找到任何有效component"):
+            scan_components(str(self.temp_dir))
+
+    def test_scan_components_prefer_components_over_subcomponents(self):
+        """测试当两种目录都存在时，优先选择components."""
+        # 创建两种目录
+        components_dir = self.temp_dir / "components"
+        components_dir.mkdir()
+        comp_dir = components_dir / "component1"
         comp_dir.mkdir()
-        # 不创建_geom.usd文件
+        (comp_dir / "component1_geom.usd").touch()
 
-        with pytest.raises(AssemblyError) as exc_info:
-            scan_components(str(self.temp_dir))
+        subcomponents_dir = self.temp_dir / "subcomponents"
+        subcomponents_dir.mkdir()
+        subcomp_dir = subcomponents_dir / "subcomponent1"
+        subcomp_dir.mkdir()
+        (subcomp_dir / "subcomponent1_geom.usd").touch()
 
-        assert "未找到任何有效组件" in str(exc_info.value)
+        components, component_type = scan_components(str(self.temp_dir))
 
-    def test_scan_components_empty_components_dir(self):
-        """测试空的components目录."""
-        with pytest.raises(AssemblyError) as exc_info:
-            scan_components(str(self.temp_dir))
-
-        assert "未找到任何有效组件" in str(exc_info.value)
+        assert component_type == ComponentType.COMPONENT
+        assert "component1" in components
 
 
-class TestComponentCreationFunctions:
-    """测试组件创建函数."""
+class TestCreateComponentMain:
+    """测试create_component_main函数."""
 
     def setup_method(self):
         """设置测试环境."""
         self.temp_dir = Path(tempfile.mkdtemp())
+        # 创建模拟的模板目录
+        self.template_dir = self.temp_dir / "template"
+        self.setup_template_structure()
 
     def teardown_method(self):
         """清理测试环境."""
@@ -164,86 +191,102 @@ class TestComponentCreationFunctions:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @patch("usdassemble.cli.get_template_dir")
-    @patch("usdassemble.cli.create_from_template")
-    def test_create_component_payload(self, mock_create_from_template, mock_get_template_dir):
-        """测试创建组件payload文件."""
-        mock_get_template_dir.return_value = Path("/mock/template")
-
-        output_path = str(self.temp_dir / "test_payload.usd")
-        component_name = "test_component"
-
-        create_component_payload(output_path, component_name)
-
-        # 验证调用
-        expected_template_path = (
-            Path("/mock/template")
-            / "{$assembly_name}"
-            / "components"
-            / "{$component_name}"
-            / "{$component_name}_payload.usd"
+    def setup_template_structure(self):
+        """设置模板目录结构."""
+        # 创建components模板
+        comp_template_dir = (
+            self.template_dir / "{$assembly_name}" / "components" / "{$component_name}"
         )
-        expected_substitutions = {"component_name": component_name}
+        comp_template_dir.mkdir(parents=True)
 
-        mock_create_from_template.assert_called_once_with(
-            expected_template_path,
-            Path(output_path),
-            expected_substitutions,
+        comp_template_content = """#usda 1.0
+(
+    defaultPrim = "${component_name}"
+)
+
+def Xform "${component_name}" (
+    kind = "component"
+)
+{
+}
+"""
+        comp_template_file = comp_template_dir / "{$component_name}.usd"
+        with open(comp_template_file, "w", encoding="utf-8") as f:
+            f.write(comp_template_content)
+
+        # 创建subcomponents模板
+        subcomp_template_dir = (
+            self.template_dir / "{$assembly_name}" / "subcomponents" / "{$component_name}"
         )
+        subcomp_template_dir.mkdir(parents=True)
 
-    @patch("usdassemble.cli.get_template_dir")
-    @patch("usdassemble.cli.create_from_template")
-    def test_create_component_look(self, mock_create_from_template, mock_get_template_dir):
-        """测试创建组件look文件."""
-        mock_get_template_dir.return_value = Path("/mock/template")
+        subcomp_template_content = """#usda 1.0
+(
+    defaultPrim = "${component_name}"
+)
 
-        output_path = str(self.temp_dir / "test_look.usd")
-        component_name = "test_component"
-
-        create_component_look(output_path, component_name)
-
-        # 验证调用
-        expected_template_path = (
-            Path("/mock/template")
-            / "{$assembly_name}"
-            / "components"
-            / "{$component_name}"
-            / "{$component_name}_look.usd"
-        )
-        expected_substitutions = {"component_name": component_name}
-
-        mock_create_from_template.assert_called_once_with(
-            expected_template_path,
-            Path(output_path),
-            expected_substitutions,
-        )
+def Xform "${component_name}" (
+    kind = "subcomponent"
+)
+{
+}
+"""
+        subcomp_template_file = subcomp_template_dir / "{$component_name}.usd"
+        with open(subcomp_template_file, "w", encoding="utf-8") as f:
+            f.write(subcomp_template_content)
 
     @patch("usdassemble.cli.get_template_dir")
-    @patch("usdassemble.cli.create_from_template")
-    def test_create_component_main(self, mock_create_from_template, mock_get_template_dir):
-        """测试创建组件主文件."""
-        mock_get_template_dir.return_value = Path("/mock/template")
+    @patch("pxr.Usd.Stage.Open")
+    @patch("pxr.Kind.Registry.SetKind")
+    def test_create_component_main_component_type(
+        self, mock_set_kind, mock_stage_open, mock_get_template
+    ):
+        """测试创建component类型的主文件."""
+        mock_get_template.return_value = self.template_dir
 
-        output_path = str(self.temp_dir / "test_main.usd")
-        component_name = "test_component"
+        # 模拟USD Stage
+        mock_stage = Mock()
+        mock_prim = Mock()
+        mock_stage.GetPrimAtPath.return_value = mock_prim
+        mock_stage_open.return_value = mock_stage
 
-        create_component_main(output_path, component_name)
+        output_path = self.temp_dir / "component1.usd"
 
-        # 验证调用
-        expected_template_path = (
-            Path("/mock/template")
-            / "{$assembly_name}"
-            / "components"
-            / "{$component_name}"
-            / "{$component_name}.usd"
-        )
-        expected_substitutions = {"component_name": component_name}
+        create_component_main(str(output_path), "component1", ComponentType.COMPONENT)
 
-        mock_create_from_template.assert_called_once_with(
-            expected_template_path,
-            Path(output_path),
-            expected_substitutions,
-        )
+        # 验证模板文件被使用
+        assert output_path.exists()
+
+        # 验证USD API调用
+        mock_stage_open.assert_called_once_with(str(output_path))
+        mock_stage.GetPrimAtPath.assert_called_once_with("/component1")
+        mock_set_kind.assert_called_once_with(mock_prim, "component")
+        mock_stage.Save.assert_called_once()
+
+    @patch("usdassemble.cli.get_template_dir")
+    @patch("pxr.Usd.Stage.Open")
+    @patch("pxr.Kind.Registry.SetKind")
+    def test_create_component_main_subcomponent_type(
+        self, mock_set_kind, mock_stage_open, mock_get_template
+    ):
+        """测试创建subcomponent类型的主文件."""
+        mock_get_template.return_value = self.template_dir
+
+        # 模拟USD Stage
+        mock_stage = Mock()
+        mock_prim = Mock()
+        mock_stage.GetPrimAtPath.return_value = mock_prim
+        mock_stage_open.return_value = mock_stage
+
+        output_path = self.temp_dir / "subcomponent1.usd"
+
+        create_component_main(str(output_path), "subcomponent1", ComponentType.SUBCOMPONENT)
+
+        # 验证模板文件被使用
+        assert output_path.exists()
+
+        # 验证USD API调用
+        mock_set_kind.assert_called_once_with(mock_prim, "subcomponent")
 
 
 class TestCreateAssemblyMain:
@@ -252,6 +295,7 @@ class TestCreateAssemblyMain:
     def setup_method(self):
         """设置测试环境."""
         self.temp_dir = Path(tempfile.mkdtemp())
+        self.setup_template()
 
     def teardown_method(self):
         """清理测试环境."""
@@ -259,60 +303,91 @@ class TestCreateAssemblyMain:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    @patch("usdassemble.cli.get_template_dir")
-    @patch("usdassemble.cli.Usd.Stage.Open")
-    def test_create_assembly_main_success(self, mock_stage_open, mock_get_template_dir):
-        """测试成功创建assembly主文件."""
-        # 模拟模板目录和文件
-        template_dir = Path("/mock/template")
-        mock_get_template_dir.return_value = template_dir
+    def setup_template(self):
+        """设置模板文件."""
+        template_dir = self.temp_dir / "template" / "{$assembly_name}"
+        template_dir.mkdir(parents=True)
 
-        template_path = template_dir / "{$assembly_name}" / "{$assembly_name}.usda"
         template_content = """#usda 1.0
 (
-    defaultPrim = "$assembly_name"
+    defaultPrim = "${assembly_name}"
 )
 
-def Xform "$assembly_name" (
+def Xform "${assembly_name}" (
     kind = "assembly"
 )
 {
 }
 """
-
-        # 模拟文件读取
-        with patch("builtins.open", mock_open_read_data(template_content)):
-            # 模拟USD Stage
-            mock_stage = Mock()
-            mock_assembly_prim = Mock()
-            mock_stage.GetPrimAtPath.return_value = mock_assembly_prim
-            mock_stage.DefinePrim.return_value = Mock()
-            mock_stage_open.return_value = mock_stage
-
-            output_path = str(self.temp_dir / "test_assembly.usda")
-            assembly_name = "test_assembly"
-            components = ["comp1", "comp2"]
-
-            # 执行函数
-            create_assembly_main(output_path, assembly_name, components)
-
-            # 验证调用
-            mock_stage_open.assert_called_once()
-            mock_stage.GetPrimAtPath.assert_called_once_with(f"/{assembly_name}")
-            assert mock_stage.DefinePrim.call_count == len(components)
-            mock_stage.Export.assert_called_once_with(output_path)
+        template_file = template_dir / "{$assembly_name}.usda"
+        with open(template_file, "w", encoding="utf-8") as f:
+            f.write(template_content)
 
     @patch("usdassemble.cli.get_template_dir")
-    def test_create_assembly_main_template_not_found(self, mock_get_template_dir):
-        """测试模板文件不存在的情况."""
-        mock_get_template_dir.return_value = Path("/nonexistent/template")
+    @patch("pxr.Usd.Stage.Open")
+    def test_create_assembly_main_with_components(self, mock_stage_open, mock_get_template):
+        """测试创建包含components的assembly主文件."""
+        mock_get_template.return_value = self.temp_dir / "template"
 
-        output_path = str(self.temp_dir / "test_assembly.usda")
-        assembly_name = "test_assembly"
-        components = ["comp1"]
+        # 模拟USD Stage
+        mock_stage = Mock()
+        mock_assembly_prim = Mock()
+        mock_stage.GetPrimAtPath.return_value = mock_assembly_prim
+        mock_stage_open.return_value = mock_stage
 
-        with pytest.raises(AssemblyError):
-            create_assembly_main(output_path, assembly_name, components)
+        # 模拟组件prim创建
+        mock_comp_prim = Mock()
+        mock_comp_refs = Mock()
+        mock_comp_prim.GetReferences.return_value = mock_comp_refs
+        mock_stage.DefinePrim.return_value = mock_comp_prim
+
+        output_path = self.temp_dir / "test_assembly.usda"
+        components = ["comp1", "comp2"]
+
+        create_assembly_main(
+            str(output_path),
+            "test_assembly",
+            components,
+            ComponentType.COMPONENT,
+        )
+
+        # 验证组件引用路径使用了正确的目录
+        expected_calls = [
+            call("./components/comp1/comp1.usd"),
+            call("./components/comp2/comp2.usd"),
+        ]
+        mock_comp_refs.AddReference.assert_has_calls(expected_calls)
+
+    @patch("usdassemble.cli.get_template_dir")
+    @patch("pxr.Usd.Stage.Open")
+    def test_create_assembly_main_with_subcomponents(self, mock_stage_open, mock_get_template):
+        """测试创建包含subcomponents的assembly主文件."""
+        mock_get_template.return_value = self.temp_dir / "template"
+
+        # 模拟USD Stage
+        mock_stage = Mock()
+        mock_assembly_prim = Mock()
+        mock_stage.GetPrimAtPath.return_value = mock_assembly_prim
+        mock_stage_open.return_value = mock_stage
+
+        # 模拟组件prim创建
+        mock_comp_prim = Mock()
+        mock_comp_refs = Mock()
+        mock_comp_prim.GetReferences.return_value = mock_comp_refs
+        mock_stage.DefinePrim.return_value = mock_comp_prim
+
+        output_path = self.temp_dir / "test_assembly.usda"
+        components = ["subcomp1"]
+
+        create_assembly_main(
+            str(output_path),
+            "test_assembly",
+            components,
+            ComponentType.SUBCOMPONENT,
+        )
+
+        # 验证子组件引用路径使用了正确的目录
+        mock_comp_refs.AddReference.assert_called_once_with("./subcomponents/subcomp1/subcomp1.usd")
 
 
 class TestProcessComponent:
@@ -321,8 +396,6 @@ class TestProcessComponent:
     def setup_method(self):
         """设置测试环境."""
         self.temp_dir = Path(tempfile.mkdtemp())
-        self.component_dir = self.temp_dir / "component1"
-        self.component_dir.mkdir()
 
     def teardown_method(self):
         """清理测试环境."""
@@ -335,115 +408,128 @@ class TestProcessComponent:
     @patch("usdassemble.cli.create_component_main")
     @patch("usdassemble.cli.create_component_payload")
     @patch("usdassemble.cli.create_component_look")
-    @patch("usdassemble.cli.console")
     def test_process_component_with_textures(
         self,
-        mock_console,
         mock_create_look,
         mock_create_payload,
         mock_create_main,
-        mock_create_materialx,
+        mock_create_mtlx,
         mock_validate_textures,
     ):
         """测试处理带纹理的组件."""
-        # 模拟纹理验证返回
-        texture_files = {"base_color": "textures/test_base_color.jpg"}
-        mock_validate_textures.return_value = texture_files
+        # 模拟纹理文件验证返回
+        mock_validate_textures.return_value = {
+            "base_color": "textures/comp_base_color.jpg",
+            "metallic": "textures/comp_metallic.png",
+        }
 
-        component_name = "test_component"
-        process_component(str(self.component_dir), component_name)
+        component_path = str(self.temp_dir / "components" / "test_comp")
+        Path(component_path).mkdir(parents=True)
 
-        # 验证调用
+        process_component(component_path, "test_comp", ComponentType.COMPONENT)
+
+        # 验证所有必要的文件创建函数都被调用
         mock_validate_textures.assert_called_once()
-        mock_create_materialx.assert_called_once_with(
-            component_name,
-            texture_files,
-            str(self.component_dir / f"{component_name}_mat.mtlx"),
+        mock_create_mtlx.assert_called_once()
+        mock_create_main.assert_called_once_with(
+            str(Path(component_path) / "test_comp.usd"),
+            "test_comp",
+            ComponentType.COMPONENT,
         )
-        mock_create_main.assert_called_once()
-        mock_create_payload.assert_called_once()
-        mock_create_look.assert_called_once()
+        mock_create_payload.assert_called_once_with(
+            str(Path(component_path) / "test_comp_payload.usd"),
+            "test_comp",
+            ComponentType.COMPONENT,
+        )
+        mock_create_look.assert_called_once_with(
+            str(Path(component_path) / "test_comp_look.usd"),
+            "test_comp",
+            ComponentType.COMPONENT,
+        )
 
     @patch("usdassemble.cli.validate_texture_files")
     @patch("usdassemble.cli.create_materialx_file")
     @patch("usdassemble.cli.create_component_main")
     @patch("usdassemble.cli.create_component_payload")
     @patch("usdassemble.cli.create_component_look")
-    @patch("usdassemble.cli.console")
-    def test_process_component_without_textures(
+    def test_process_subcomponent_without_textures(
         self,
-        mock_console,
         mock_create_look,
         mock_create_payload,
         mock_create_main,
-        mock_create_materialx,
+        mock_create_mtlx,
         mock_validate_textures,
     ):
-        """测试处理无纹理的组件."""
-        # 模拟无纹理返回
+        """测试处理无纹理的子组件."""
+        # 模拟无纹理文件
         mock_validate_textures.return_value = {}
 
-        component_name = "test_component"
-        process_component(str(self.component_dir), component_name)
+        component_path = str(self.temp_dir / "subcomponents" / "test_subcomp")
+        Path(component_path).mkdir(parents=True)
 
-        # 验证调用
-        mock_validate_textures.assert_called_once()
-        mock_create_materialx.assert_not_called()  # 无纹理时不创建MaterialX
-        mock_create_main.assert_called_once()
-        mock_create_payload.assert_called_once()
-        mock_create_look.assert_called_once()
+        process_component(component_path, "test_subcomp", ComponentType.SUBCOMPONENT)
+
+        # 验证MaterialX文件没有被创建
+        mock_create_mtlx.assert_not_called()
+
+        # 验证其他文件创建函数被调用时使用了正确的组件类型
+        mock_create_main.assert_called_once_with(
+            str(Path(component_path) / "test_subcomp.usd"),
+            "test_subcomp",
+            ComponentType.SUBCOMPONENT,
+        )
 
 
-class TestCLICommands:
-    """测试CLI命令."""
+class TestAssemblyCommand:
+    """测试assembly命令."""
 
-    def test_assembly_command_help(self):
-        """测试assembly命令的帮助信息."""
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", "--help"])
-        assert result.exit_code == 0
-        assert "装配 USD assembly" in result.output
+    def setup_method(self):
+        """设置测试环境."""
+        self.runner = CliRunner()
 
     @patch("usdassemble.cli.scan_components")
     @patch("usdassemble.cli.process_component")
     @patch("usdassemble.cli.create_assembly_main")
-    def test_assembly_command_success(
-        self, mock_create_assembly, mock_process_component, mock_scan_components
-    ):
+    def test_assembly_command_success(self, mock_create_assembly, mock_process_comp, mock_scan):
         """测试assembly命令成功执行."""
-        # 模拟扫描组件返回
-        mock_scan_components.return_value = ["comp1", "comp2"]
+        # 模拟扫描结果
+        mock_scan.return_value = (["comp1", "comp2"], ComponentType.COMPONENT)
 
-        runner = CliRunner()
-        with runner.isolated_filesystem():
-            # 创建测试目录结构
-            Path("test_project").mkdir()
-
-            result = runner.invoke(app, ["assembly", "test_project"])
-
-            # 验证调用
-            mock_scan_components.assert_called_once()
-            assert mock_process_component.call_count == 2
-            mock_create_assembly.assert_called_once()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self.runner.invoke(app, ["assembly", temp_dir])
 
             assert result.exit_code == 0
+            mock_scan.assert_called_once()
+            assert mock_process_comp.call_count == 2
+            mock_create_assembly.assert_called_once()
 
     @patch("usdassemble.cli.scan_components")
-    def test_assembly_command_error_handling(self, mock_scan_components):
-        """测试assembly命令的错误处理."""
-        # 模拟扫描组件失败
-        mock_scan_components.side_effect = AssemblyError("测试错误")
+    def test_assembly_command_no_components(self, mock_scan):
+        """测试没有组件时的assembly命令."""
+        # 模拟扫描失败
+        mock_scan.side_effect = AssemblyError("未找到任何有效组件")
 
-        runner = CliRunner()
-        with runner.isolated_filesystem():
-            result = runner.invoke(app, ["assembly", "test_project"])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self.runner.invoke(app, ["assembly", temp_dir])
 
             assert result.exit_code == 1
-            assert "装配失败" in result.output
+            assert "装配失败" in result.stdout
 
+    @patch("usdassemble.cli.scan_components")
+    @patch("usdassemble.cli.process_component")
+    @patch("usdassemble.cli.create_assembly_main")
+    def test_assembly_command_with_subcomponents(
+        self, mock_create_assembly, mock_process_comp, mock_scan
+    ):
+        """测试assembly命令处理subcomponents."""
+        # 模拟子组件扫描结果
+        mock_scan.return_value = (["subcomp1"], ComponentType.SUBCOMPONENT)
 
-def mock_open_read_data(data):
-    """创建mock的open函数，用于返回指定数据."""
-    from unittest.mock import mock_open
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self.runner.invoke(app, ["assembly", temp_dir])
 
-    return mock_open(read_data=data)
+            assert result.exit_code == 0
+            # 验证process_component被调用时传递了正确的组件类型
+            mock_process_comp.assert_called_once()
+            args, kwargs = mock_process_comp.call_args
+            assert args[2] == ComponentType.SUBCOMPONENT

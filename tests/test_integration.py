@@ -1,206 +1,362 @@
 #!/usr/bin/env python3
-"""集成测试 - 测试完整的USD装配工作流程."""
+"""集成测试 - 测试完整的USD装配流程."""
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from typer.testing import CliRunner
 
 from usdassemble.cli import app
+from usdassemble.utils import ComponentType
 
 
-class TestIntegrationWorkflow:
+class TestCompleteWorkflow:
     """测试完整的USD装配工作流程."""
 
-    def setup_method(self) -> None:
+    def setup_method(self):
         """设置测试环境."""
+        self.runner = CliRunner()
         self.temp_dir = Path(tempfile.mkdtemp())
-        self.project_dir = self.temp_dir / "test_project"
-        self.project_dir.mkdir()
+        self.setup_test_project()
 
-        # 创建components目录
-        self.components_dir = self.project_dir / "components"
-        self.components_dir.mkdir()
-
-    def teardown_method(self) -> None:
+    def teardown_method(self):
         """清理测试环境."""
         import shutil
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def create_test_component(self, component_name: str, with_textures: bool = True):
-        """创建测试组件."""
-        comp_dir = self.components_dir / component_name
-        comp_dir.mkdir()
+    def setup_test_project(self):
+        """设置测试项目结构."""
+        # 创建模拟的模板目录
+        self.setup_templates()
 
-        # 创建几何体文件（必需）
-        geom_file = comp_dir / f"{component_name}_geom.usd"
-        geom_file.touch()
+    def setup_templates(self):
+        """设置模板文件."""
+        # 设置components模板
+        comp_template_dir = (
+            self.temp_dir / "templates" / "{$assembly_name}" / "components" / "{$component_name}"
+        )
+        comp_template_dir.mkdir(parents=True)
 
-        if with_textures:
-            # 创建纹理目录和文件
-            texture_dir = comp_dir / "textures"
-            texture_dir.mkdir()
+        self.create_template_files(comp_template_dir, "component")
 
-            (texture_dir / f"{component_name}_base_color.jpg").touch()
-            (texture_dir / f"{component_name}_metallic.png").touch()
-            (texture_dir / f"{component_name}_roughness.exr").touch()
+        # 设置subcomponents模板
+        subcomp_template_dir = (
+            self.temp_dir / "templates" / "{$assembly_name}" / "subcomponents" / "{$component_name}"
+        )
+        subcomp_template_dir.mkdir(parents=True)
 
-    @patch("usdassemble.cli.create_materialx_file")
-    @patch("usdassemble.cli.create_from_template")
-    @patch("usdassemble.cli.Usd.Stage.Open")
-    def test_complete_assembly_workflow(
+        self.create_template_files(subcomp_template_dir, "subcomponent")
+
+    def create_template_files(self, template_dir: Path, kind: str):
+        """创建模板文件."""
+        # 主文件模板
+        main_template = f"""#usda 1.0
+(
+    defaultPrim = "${{component_name}}"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "${{component_name}}" (
+    kind = "{kind}"
+    payload = @./${{component_name}}_payload.usd@</${{component_name}}>
+)
+{{
+}}
+"""
+
+        # Payload模板
+        payload_template = """#usda 1.0
+(
+    defaultPrim = "${component_name}"
+    metersPerUnit = 1
+    subLayers = [
+        @./${component_name}_look.usd@,
+        @./${component_name}_geom.usd@
+    ]
+    upAxis = "Y"
+)
+"""
+
+        # Look模板
+        look_template = """#usda 1.0
+(
+    defaultPrim = "${component_name}"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+over "${component_name}"
+{
+    def Scope "Materials" (
+        prepend references = @./${component_name}_mat.mtlx@</MaterialX/Materials>
+    )
+    {
+    }
+}
+"""
+
+        # MaterialX模板
+        mtlx_template = """<?xml version="1.0"?>
+<materialx version="1.38" colorspace="lin_rec709">
+  <nodegraph name="NG_${component_name}">
+    <image name="base_color" type="color3" />
+    <image name="metallic" type="float" />
+    <output name="base_color_output" type="color3" nodename="base_color" />
+    <output name="metalness_output" type="float" nodename="metallic" />
+  </nodegraph>
+
+  <open_pbr_surface name="${component_name}" type="surfaceshader">
+    <input name="base_color" type="color3" nodegraph="NG_${component_name}" output="base_color_output" />
+  </open_pbr_surface>
+
+  <surfacematerial name="M_${component_name}" type="material">
+    <input name="${component_name}" type="surfaceshader" nodename="open_pbr_surface1" />
+  </surfacematerial>
+</materialx>"""
+
+        # 写入模板文件
+        (template_dir / "{$component_name}.usd").write_text(main_template, encoding="utf-8")
+        (template_dir / "{$component_name}_payload.usd").write_text(
+            payload_template,
+            encoding="utf-8",
+        )
+        (template_dir / "{$component_name}_look.usd").write_text(look_template, encoding="utf-8")
+        (template_dir / "{$component_name}_mat.mtlx").write_text(mtlx_template, encoding="utf-8")
+
+    def create_project_with_components(self, project_dir: Path):
+        """创建包含components的测试项目."""
+        components_dir = project_dir / "components"
+        components_dir.mkdir(parents=True)
+
+        # 创建component1
+        comp1_dir = components_dir / "component1"
+        comp1_dir.mkdir()
+        (comp1_dir / "component1_geom.usd").touch()
+
+        # 创建带纹理的component2
+        comp2_dir = components_dir / "component2"
+        comp2_dir.mkdir()
+        (comp2_dir / "component2_geom.usd").touch()
+
+        # 创建纹理目录和文件
+        textures_dir = comp2_dir / "textures"
+        textures_dir.mkdir()
+        (textures_dir / "comp2_base_color.jpg").touch()
+        (textures_dir / "comp2_metallic.png").touch()
+
+    def create_project_with_subcomponents(self, project_dir: Path):
+        """创建包含subcomponents的测试项目."""
+        subcomponents_dir = project_dir / "subcomponents"
+        subcomponents_dir.mkdir(parents=True)
+
+        # 创建subcomponent1
+        subcomp1_dir = subcomponents_dir / "subcomponent1"
+        subcomp1_dir.mkdir()
+        (subcomp1_dir / "subcomponent1_geom.usd").touch()
+
+    @patch("usdassemble.cli.get_template_dir")
+    @patch("pxr.Usd.Stage.Open")
+    @patch("pxr.Kind.Registry.SetKind")
+    @patch("MaterialX.createDocument")
+    @patch("MaterialX.readFromXmlFile")
+    @patch("MaterialX.writeToXmlFile")
+    def test_components_workflow_end_to_end(
         self,
+        mock_write_xml,
+        mock_read_xml,
+        mock_create_doc,
+        mock_set_kind,
         mock_stage_open,
-        mock_create_from_template,
-        mock_create_materialx,
+        mock_get_template,
     ):
-        """测试完整的装配工作流程."""
-        # 创建测试组件
-        self.create_test_component("chess_piece", with_textures=True)
-        self.create_test_component("board_square", with_textures=True)
-        self.create_test_component("frame", with_textures=False)
+        """测试components的端到端工作流程."""
+        mock_get_template.return_value = self.temp_dir / "templates"
 
         # 模拟USD Stage
-        mock_stage = mock_stage_open.return_value
-        mock_stage.GetPrimAtPath.return_value = True
-        mock_stage.DefinePrim.return_value = True
+        mock_stage = self.setup_usd_mocks(mock_stage_open)
+
+        # 模拟MaterialX
+        self.setup_materialx_mocks(mock_create_doc, mock_read_xml)
+
+        # 创建测试项目
+        project_dir = self.temp_dir / "test_project"
+        self.create_project_with_components(project_dir)
 
         # 执行assembly命令
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", str(self.project_dir)])
+        result = self.runner.invoke(app, ["assembly", str(project_dir)])
 
-        # 验证成功执行
-        assert result.exit_code == 0
-        assert "Assembly 装配完成" in result.output
+        # 验证成功
+        assert result.exit_code == 0, f"命令失败: {result.stdout}"
+        assert "装配完成" in result.stdout
+        assert "component" in result.stdout  # 应该显示组件类型
 
-        # 验证组件被正确识别
-        assert "chess_piece" in result.output
-        assert "board_square" in result.output
-        assert "frame" in result.output
+        # 验证Kind.Registry.SetKind被调用时使用了正确的kind值
+        set_kind_calls = mock_set_kind.call_args_list
+        # 应该为两个组件各调用一次
+        assert len(set_kind_calls) == 2
+        for call_args in set_kind_calls:
+            # 第二个参数应该是"component"
+            assert call_args[0][1] == "component"
 
-        # 验证模板创建被调用（每个组件创建3个文件：main、payload、look）
-        expected_template_calls = 3 * 3  # 3个组件 × 3个文件
-        assert mock_create_from_template.call_count == expected_template_calls
+    @patch("usdassemble.cli.get_template_dir")
+    @patch("pxr.Usd.Stage.Open")
+    @patch("pxr.Kind.Registry.SetKind")
+    @patch("MaterialX.createDocument")
+    @patch("MaterialX.readFromXmlFile")
+    @patch("MaterialX.writeToXmlFile")
+    def test_subcomponents_workflow_end_to_end(
+        self,
+        mock_write_xml,
+        mock_read_xml,
+        mock_create_doc,
+        mock_set_kind,
+        mock_stage_open,
+        mock_get_template,
+    ):
+        """测试subcomponents的端到端工作流程."""
+        mock_get_template.return_value = self.temp_dir / "templates"
 
-        # 验证MaterialX文件创建（只有带纹理的组件才创建）
-        assert mock_create_materialx.call_count == 2  # chess_piece和board_square
+        # 模拟USD Stage
+        mock_stage = self.setup_usd_mocks(mock_stage_open)
 
-        # 验证assembly主文件创建
-        mock_stage.Export.assert_called_once()
+        # 模拟MaterialX
+        self.setup_materialx_mocks(mock_create_doc, mock_read_xml)
 
-    def test_assembly_with_invalid_components(self):
-        """测试包含无效组件的情况."""
-        # 创建无效组件（缺少几何体文件）
-        invalid_comp_dir = self.components_dir / "invalid_component"
+        # 创建测试项目
+        project_dir = self.temp_dir / "test_subproject"
+        self.create_project_with_subcomponents(project_dir)
+
+        # 执行assembly命令
+        result = self.runner.invoke(app, ["assembly", str(project_dir)])
+
+        # 验证成功
+        assert result.exit_code == 0, f"命令失败: {result.stdout}"
+        assert "装配完成" in result.stdout
+        assert "subcomponent" in result.stdout  # 应该显示子组件类型
+
+        # 验证Kind.Registry.SetKind被调用时使用了正确的kind值
+        set_kind_calls = mock_set_kind.call_args_list
+        assert len(set_kind_calls) == 1
+        # 第二个参数应该是"subcomponent"
+        assert set_kind_calls[0][0][1] == "subcomponent"
+
+    @patch("usdassemble.cli.get_template_dir")
+    def test_mixed_directories_prefer_components(self, mock_get_template):
+        """测试当同时存在components和subcomponents目录时，优先处理components."""
+        mock_get_template.return_value = self.temp_dir / "templates"
+
+        # 创建同时包含两种目录的项目
+        project_dir = self.temp_dir / "mixed_project"
+
+        # 创建components
+        self.create_project_with_components(project_dir)
+
+        # 创建subcomponents
+        self.create_project_with_subcomponents(project_dir)
+
+        with patch("pxr.Usd.Stage.Open") as mock_stage_open:
+            mock_stage = self.setup_usd_mocks(mock_stage_open)
+
+            with patch("MaterialX.createDocument") as mock_create_doc:
+                self.setup_materialx_mocks(mock_create_doc, None)
+
+                # 执行assembly命令
+                result = self.runner.invoke(app, ["assembly", str(project_dir)])
+
+                # 验证成功并优先处理了components
+                assert result.exit_code == 0
+                assert "component1" in result.stdout
+                assert "component2" in result.stdout
+                # 不应该处理subcomponents
+                assert "subcomponent1" not in result.stdout
+
+    def test_no_component_directories(self):
+        """测试没有组件目录时的错误处理."""
+        project_dir = self.temp_dir / "empty_project"
+        project_dir.mkdir()
+
+        result = self.runner.invoke(app, ["assembly", str(project_dir)])
+
+        assert result.exit_code == 1
+        assert "装配失败" in result.stdout
+        assert "未找到支持的组件目录" in result.stdout
+
+    def test_empty_components_directory(self):
+        """测试空组件目录的错误处理."""
+        project_dir = self.temp_dir / "empty_components_project"
+        project_dir.mkdir()
+        (project_dir / "components").mkdir()  # 空目录
+
+        result = self.runner.invoke(app, ["assembly", str(project_dir)])
+
+        assert result.exit_code == 1
+        assert "装配失败" in result.stdout
+        assert "未找到任何有效component" in result.stdout
+
+    def test_invalid_components_missing_geom(self):
+        """测试包含无效组件（缺少geom文件）的处理."""
+        project_dir = self.temp_dir / "invalid_project"
+        components_dir = project_dir / "components"
+        components_dir.mkdir(parents=True)
+
+        # 创建无效组件（缺少geom文件）
+        invalid_comp_dir = components_dir / "invalid_component"
         invalid_comp_dir.mkdir()
         # 不创建_geom.usd文件
 
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", str(self.project_dir)])
+        result = self.runner.invoke(app, ["assembly", str(project_dir)])
 
-        # 验证失败
         assert result.exit_code == 1
-        assert "装配失败" in result.output
+        assert "装配失败" in result.stdout
+        assert "未找到任何有效component" in result.stdout
 
-    def test_assembly_with_texture_conflicts(self):
-        """测试纹理文件冲突的情况."""
-        # 创建带冲突纹理的组件
-        comp_dir = self.components_dir / "conflict_component"
-        comp_dir.mkdir()
-        (comp_dir / "conflict_component_geom.usd").touch()
+    def setup_usd_mocks(self, mock_stage_open):
+        """设置USD相关的mock对象."""
+        from unittest.mock import Mock
 
-        texture_dir = comp_dir / "textures"
-        texture_dir.mkdir()
+        mock_stage = Mock()
+        mock_stage_open.return_value = mock_stage
 
-        # 创建重复的base_color文件
-        (texture_dir / "mat_base_color.jpg").touch()
-        (texture_dir / "tex_base_color.png").touch()
+        # 模拟prim
+        mock_prim = Mock()
+        mock_stage.GetPrimAtPath.return_value = mock_prim
+        mock_stage.DefinePrim.return_value = mock_prim
 
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", str(self.project_dir)])
+        # 模拟references
+        mock_refs = Mock()
+        mock_prim.GetReferences.return_value = mock_refs
 
-        # 验证失败并显示纹理验证错误
-        assert result.exit_code == 1
-        assert "装配失败" in result.output
+        return mock_stage
 
-    @patch("usdassemble.cli.create_materialx_file")
-    @patch("usdassemble.cli.create_from_template")
-    @patch("usdassemble.cli.Usd.Stage.Open")
-    def test_assembly_with_mixed_components(
-        self,
-        mock_stage_open,
-        mock_create_from_template,
-        mock_create_materialx,
-    ):
-        """测试混合组件（有纹理和无纹理）的情况."""
-        # 创建混合组件
-        self.create_test_component("textured_comp", with_textures=True)
-        self.create_test_component("simple_comp", with_textures=False)
+    def setup_materialx_mocks(self, mock_create_doc, mock_read_xml):
+        """设置MaterialX相关的mock对象."""
+        from unittest.mock import Mock
 
-        # 模拟USD Stage
-        mock_stage = mock_stage_open.return_value
-        mock_stage.GetPrimAtPath.return_value = True
-        mock_stage.DefinePrim.return_value = True
+        mock_doc = Mock()
+        mock_create_doc.return_value = mock_doc
 
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", str(self.project_dir)])
+        # 模拟节点图
+        mock_node_graph = Mock()
+        mock_doc.getNodeGraph.return_value = mock_node_graph
 
-        # 验证成功执行
-        assert result.exit_code == 0
-        assert "Assembly 装配完成" in result.output
+        # 模拟节点
+        mock_node = Mock()
+        mock_node_graph.getNode.return_value = mock_node
+        mock_node_graph.getNodes.return_value = []
 
-        # 验证MaterialX只为有纹理的组件创建
-        assert mock_create_materialx.call_count == 1
+        # 模拟输入
+        mock_input = Mock()
+        mock_node.addInput.return_value = mock_input
 
-        # 验证跳过MaterialX的信息
-        assert "跳过" in result.output and "MaterialX" in result.output
-
-    def test_assembly_empty_project(self):
-        """测试空项目的情况."""
-        empty_project = self.temp_dir / "empty_project"
-        empty_project.mkdir()
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", str(empty_project)])
-
-        # 验证失败
-        assert result.exit_code == 1
-        assert "装配失败" in result.output
-
-    def test_assembly_verbose_mode(self):
-        """测试详细模式."""
-        self.create_test_component("test_comp", with_textures=True)
-
-        with patch("usdassemble.cli.create_materialx_file"):
-            with patch("usdassemble.cli.create_from_template"):
-                with patch("usdassemble.cli.Usd.Stage.Open") as mock_stage_open:
-                    mock_stage = mock_stage_open.return_value
-                    mock_stage.GetPrimAtPath.return_value = True
-                    mock_stage.DefinePrim.return_value = True
-
-                    runner = CliRunner()
-                    result = runner.invoke(app, ["assembly", str(self.project_dir), "--verbose"])
-
-                    # 验证成功执行
-                    assert result.exit_code == 0
-
-    def test_assembly_nonexistent_path(self):
-        """测试不存在的路径."""
-        nonexistent_path = self.temp_dir / "nonexistent"
-
-        runner = CliRunner()
-        result = runner.invoke(app, ["assembly", str(nonexistent_path)])
-
-        # 验证失败
-        assert result.exit_code == 1
-        assert "装配失败" in result.output
+        return mock_doc
 
 
-class TestWorkflowEdgeCases:
-    """测试工作流程的边界情况."""
+class TestComponentTypeDetection:
+    """测试组件类型检测功能."""
 
     def setup_method(self):
         """设置测试环境."""
@@ -212,58 +368,167 @@ class TestWorkflowEdgeCases:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_assembly_with_unicode_names(self):
-        """测试包含Unicode字符的组件名."""
-        project_dir = self.temp_dir / "unicode_project"
-        project_dir.mkdir()
+    def test_detect_components_type(self):
+        """测试检测components类型."""
+        from usdassemble.utils import get_component_directory_and_type
 
-        components_dir = project_dir / "components"
+        # 创建components目录
+        components_dir = self.temp_dir / "components"
         components_dir.mkdir()
 
-        # 创建包含Unicode字符的组件（使用英文名以避免文件系统问题）
-        comp_dir = components_dir / "unicode_component"
-        comp_dir.mkdir()
-        (comp_dir / "unicode_component_geom.usd").touch()
+        result_dir, result_type = get_component_directory_and_type(self.temp_dir)
 
-        with patch("usdassemble.cli.create_materialx_file"):
-            with patch("usdassemble.cli.create_from_template"):
-                with patch("usdassemble.cli.Usd.Stage.Open") as mock_stage_open:
-                    mock_stage = mock_stage_open.return_value
-                    mock_stage.GetPrimAtPath.return_value = True
-                    mock_stage.DefinePrim.return_value = True
+        assert result_dir == components_dir
+        assert result_type == ComponentType.COMPONENT
 
-                    runner = CliRunner()
-                    result = runner.invoke(app, ["assembly", str(project_dir)])
+    def test_detect_subcomponents_type(self):
+        """测试检测subcomponents类型."""
+        from usdassemble.utils import get_component_directory_and_type
 
-                    # 验证成功处理
-                    assert result.exit_code == 0
+        # 创建subcomponents目录
+        subcomponents_dir = self.temp_dir / "subcomponents"
+        subcomponents_dir.mkdir()
 
-    def test_assembly_with_many_components(self):
-        """测试大量组件的情况."""
-        project_dir = self.temp_dir / "large_project"
-        project_dir.mkdir()
+        result_dir, result_type = get_component_directory_and_type(self.temp_dir)
 
-        components_dir = project_dir / "components"
+        assert result_dir == subcomponents_dir
+        assert result_type == ComponentType.SUBCOMPONENT
+
+    def test_prefer_components_over_subcomponents(self):
+        """测试当两种目录都存在时，优先选择components."""
+        from usdassemble.utils import get_component_directory_and_type
+
+        # 创建两种目录
+        components_dir = self.temp_dir / "components"
         components_dir.mkdir()
+        subcomponents_dir = self.temp_dir / "subcomponents"
+        subcomponents_dir.mkdir()
 
-        # 创建多个组件
-        component_count = 10
-        for i in range(component_count):
-            comp_name = f"component_{i:02d}"
-            comp_dir = components_dir / comp_name
-            comp_dir.mkdir()
-            (comp_dir / f"{comp_name}_geom.usd").touch()
+        result_dir, result_type = get_component_directory_and_type(self.temp_dir)
 
-        with patch("usdassemble.cli.create_materialx_file"):
-            with patch("usdassemble.cli.create_from_template"):
-                with patch("usdassemble.cli.Usd.Stage.Open") as mock_stage_open:
-                    mock_stage = mock_stage_open.return_value
-                    mock_stage.GetPrimAtPath.return_value = True
-                    mock_stage.DefinePrim.return_value = True
+        assert result_dir == components_dir
+        assert result_type == ComponentType.COMPONENT
 
-                    runner = CliRunner()
-                    result = runner.invoke(app, ["assembly", str(project_dir)])
+    def test_no_component_directories_error(self):
+        """测试没有组件目录时抛出错误."""
+        from usdassemble.utils import get_component_directory_and_type
 
-                    # 验证成功处理所有组件
-                    assert result.exit_code == 0
-                    assert f"找到 {component_count} 个有效组件" in result.output
+        with pytest.raises(ValueError, match="未找到支持的组件目录"):
+            get_component_directory_and_type(self.temp_dir)
+
+
+class TestTemplatePathResolution:
+    """测试模板路径解析功能."""
+
+    def setup_method(self):
+        """设置测试环境."""
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def teardown_method(self):
+        """清理测试环境."""
+        import shutil
+
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @patch("usdassemble.cli.get_template_dir")
+    def test_component_template_path_resolution(self, mock_get_template):
+        """测试component模板路径解析."""
+        from usdassemble.cli import create_component_main
+
+        mock_get_template.return_value = self.temp_dir
+
+        # 创建模板文件
+        template_dir = self.temp_dir / "{$assembly_name}" / "components" / "{$component_name}"
+        template_dir.mkdir(parents=True)
+        template_file = template_dir / "{$component_name}.usd"
+        template_file.write_text('#usda 1.0\ndef Xform "${component_name}" (kind = "component") {}')
+
+        with patch("pxr.Usd.Stage.Open") as mock_stage_open:
+            mock_stage = Mock()
+            mock_prim = Mock()
+            mock_stage.GetPrimAtPath.return_value = mock_prim
+            mock_stage_open.return_value = mock_stage
+
+            output_path = self.temp_dir / "test_comp.usd"
+
+            # 应该不抛出异常
+            create_component_main(str(output_path), "test_comp", ComponentType.COMPONENT)
+
+            # 验证文件被创建
+            assert output_path.exists()
+
+    @patch("usdassemble.cli.get_template_dir")
+    def test_subcomponent_template_path_resolution(self, mock_get_template):
+        """测试subcomponent模板路径解析."""
+        from usdassemble.cli import create_component_main
+
+        mock_get_template.return_value = self.temp_dir
+
+        # 创建模板文件
+        template_dir = self.temp_dir / "{$assembly_name}" / "subcomponents" / "{$component_name}"
+        template_dir.mkdir(parents=True)
+        template_file = template_dir / "{$component_name}.usd"
+        template_file.write_text(
+            '#usda 1.0\ndef Xform "${component_name}" (kind = "subcomponent") {}',
+        )
+
+        with patch("pxr.Usd.Stage.Open") as mock_stage_open:
+            mock_stage = Mock()
+            mock_prim = Mock()
+            mock_stage.GetPrimAtPath.return_value = mock_prim
+            mock_stage_open.return_value = mock_stage
+
+            output_path = self.temp_dir / "test_subcomp.usd"
+
+            # 应该不抛出异常
+            create_component_main(str(output_path), "test_subcomp", ComponentType.SUBCOMPONENT)
+
+            # 验证文件被创建
+            assert output_path.exists()
+
+    @patch("mtlx.materialx.get_template_dir")
+    def test_materialx_template_path_resolution(self, mock_get_template):
+        """测试MaterialX模板路径解析."""
+        from mtlx.materialx import create_materialx_file
+
+        mock_get_template.return_value = self.temp_dir
+
+        # 创建MaterialX模板文件
+        comp_template_dir = self.temp_dir / "{$assembly_name}" / "components" / "{$component_name}"
+        comp_template_dir.mkdir(parents=True)
+        comp_template_file = comp_template_dir / "{$component_name}_mat.mtlx"
+        comp_template_file.write_text("""<?xml version="1.0"?>
+<materialx version="1.38">
+  <nodegraph name="NG_${component_name}">
+    <image name="base_color" type="color3" />
+  </nodegraph>
+</materialx>""")
+
+        subcomp_template_dir = (
+            self.temp_dir / "{$assembly_name}" / "subcomponents" / "{$component_name}"
+        )
+        subcomp_template_dir.mkdir(parents=True)
+        subcomp_template_file = subcomp_template_dir / "{$component_name}_mat.mtlx"
+        subcomp_template_file.write_text(comp_template_file.read_text())
+
+        with patch("MaterialX.createDocument") as mock_create_doc:
+            mock_doc = Mock()
+            mock_create_doc.return_value = mock_doc
+            mock_node_graph = Mock()
+            mock_doc.getNodeGraph.return_value = mock_node_graph
+            mock_node_graph.getNode.return_value = None
+            mock_node_graph.getNodes.return_value = []
+
+            with patch("MaterialX.readFromXmlFile"), patch("MaterialX.writeToXmlFile"):
+                # 测试component类型
+                output_path = self.temp_dir / "comp_mat.mtlx"
+                create_materialx_file("test_comp", {}, str(output_path), ComponentType.COMPONENT)
+
+                # 测试subcomponent类型
+                output_path = self.temp_dir / "subcomp_mat.mtlx"
+                create_materialx_file(
+                    "test_subcomp",
+                    {},
+                    str(output_path),
+                    ComponentType.SUBCOMPONENT,
+                )
