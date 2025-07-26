@@ -1,5 +1,3 @@
-# TODO：美化所有输出
-
 """USD Asset Assembly Script.
 
 使用 Pixar OpenUSD API 装配棋盘资产
@@ -7,111 +5,33 @@
 
 from pathlib import Path
 from string import Template
+from typing import List, Optional
 
 import typer
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, Vt
+from pxr import Sdf, Usd
 from rich import print as rprint
 from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 from mtlx.materialx import create_materialx_file
-from usdassemble.utils import ensure_directory, get_template_dir
+from usdassemble.utils import (
+    TextureValidationError,
+    ensure_directory,
+    get_template_dir,
+    validate_texture_files,
+)
 
-app = typer.Typer()
+app = typer.Typer(help="USD资产自动组装工具")
 console = Console()
 
 
-# TODO： `detect_texture_files` is too complex , 重构优化
-def detect_texture_files(component_path: str, component_name: str) -> dict[str, str]:
-    """检测组件目录中的纹理文件."""
-    texture_dir = Path(component_path) / "textures"
+class AssemblyError(Exception):
+    """装配过程中的错误."""
 
-    if not texture_dir.exists():
-        console.print(f"[yellow]警告: 未找到纹理目录 {texture_dir}[/yellow]")
-        return {}
-
-    # 常见的纹理文件模式
-    texture_patterns = {
-        # 键名同时也是.mtlx文件中图像节点的名称
-        # https://docs.o3de.org/docs/user-guide/assets/texture-settings/texture-presets/?utm_source=chatgpt.com
-        "base_color": ["*base_color*"],
-        "metallic": ["*metallic*"],
-        "roughness": ["*roughness*"],
-        "normal": ["*normal*"],
-        "specular": ["*specular*"],
-        "scattering": ["*scattering*"],
-        "diffuse": ["*diffuse*"],
-        "emissive": ["*emissive*"],
-        "displacement": ["*displacement*"],
-        "opacity": ["*opacity*"],
-        "occlusion": ["*occlusion*"],
-        "reflection": ["*reflection*"],
-        "refraction": ["*refraction*"],
-        "sheen": ["*sheen*"],
-        "transmission": ["*transmission*"],
-    }
-
-    found_textures = {}
-
-    # 扫描纹理文件
-    for texture_type, patterns in texture_patterns.items():
-        for pattern in patterns:
-            files = (
-                list(texture_dir.glob(f"{pattern}.jpg"))
-                + list(texture_dir.glob(f"{pattern}.png"))
-                + list(texture_dir.glob(f"{pattern}.exr"))
-            )
-
-            if files:
-                # 选择第一个匹配的文件
-                relative_path = files[0].relative_to(component_path).as_posix()
-                found_textures[texture_type] = relative_path
-                break
-
-    console.print(
-        f"[green]为 {component_name} 检测到纹理文件: {list(found_textures.keys())}[/green]",
-    )
-    # 检查是否存在重复的纹理文件、没用上的纹理文件,显示警告
-
-    # TODO: 严格检查贴图文件，有多的重复的就报错停止，让用户重新确认而不是警告
-    # 1. 检查是否有多个文件匹配同一类型
-    for texture_type, patterns in texture_patterns.items():
-        matched_files = []
-        for pattern in patterns:
-            matched_files += (
-                list(texture_dir.glob(f"{pattern}.jpg"))
-                + list(texture_dir.glob(f"{pattern}.png"))
-                + list(texture_dir.glob(f"{pattern}.exr"))
-            )
-        if len(matched_files) > 1:
-            file_list = [f.relative_to(component_path).as_posix() for f in matched_files]
-            console.print(
-                f"[yellow]警告: 纹理类型 '{texture_type}' 匹配到多个文件: {file_list}，仅使用第一个: {file_list[0]}[/yellow]",
-            )
-
-    # 2. 检查是否有没用上的纹理文件
-    # 收集所有已用到的纹理文件
-    used_files = set()
-    for rel_path in found_textures.values():
-        used_files.add((texture_dir / rel_path).resolve())
-
-    # 收集目录下所有纹理文件
-    all_texture_files = set()
-    for ext in ("*.jpg", "*.png", "*.exr"):
-        all_texture_files.update(texture_dir.glob(ext))
-
-    # 检查未被使用的文件
-    unused_files = []
-    for f in all_texture_files:
-        # 以绝对路径比较
-        if f.resolve() not in used_files:
-            unused_files.append(f.relative_to(component_path).as_posix())
-
-    if unused_files:
-        console.print(
-            f"[yellow]警告: 以下纹理文件未被识别和使用: {unused_files}[/yellow]",
-        )
-
-    return found_textures
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 
 def create_from_template(
@@ -125,27 +45,33 @@ def create_from_template(
         template_path: 模板文件路径
         output_path: 输出文件路径
         substitutions: 替换字典
+
+    Raises
+    ------
+        AssemblyError: 当模板文件不存在或处理失败时
     """
     if not template_path.exists():
-        console.print(f"[red]模板文件不存在: {template_path}[/red]")
-        return
+        raise AssemblyError(f"模板文件不存在: {template_path}") from None
 
     # 确保输出目录存在
     ensure_directory(output_path)
 
-    # 读取模板内容
-    with Path.open(template_path, encoding="utf-8") as f:
-        template_content = f.read()
+    try:
+        # 读取模板内容
+        with Path.open(template_path, encoding="utf-8") as f:
+            template_content = f.read()
 
-    # 进行替换
-    template = Template(template_content)
-    content = template.safe_substitute(**substitutions)
+        # 进行替换
+        template = Template(template_content)
+        content = template.safe_substitute(**substitutions)
 
-    # 写入输出文件
-    with Path.open(output_path, "w", encoding="utf-8") as f:
-        f.write(content)
+        # 写入输出文件
+        with Path.open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
 
-    console.print(f"[green]从模板生成文件: {output_path}[/green]")
+        console.print(f"[green]✓ 生成文件: {output_path.name}[/green]")
+    except Exception as e:
+        raise AssemblyError(f"从模板生成文件失败: {e}") from e
 
 
 def create_component_payload(output_path: str, component_name: str) -> None:
@@ -200,137 +126,208 @@ def create_component_main(output_path: str, component_name: str) -> None:
 
 
 def scan_components(base_path: str) -> list[str]:
-    """扫描目录中的组件."""
+    """扫描目录中的组件.
+
+    Returns
+    -------
+        List[str]: 有效组件名称列表
+
+    Raises
+    ------
+        AssemblyError: 当未找到任何组件时
+    """
     components_path = Path(base_path) / "components"
 
     if not components_path.exists():
-        console.print(f"[yellow]警告: 未找到 components 目录: {components_path}[/yellow]")
-        return []
+        msg = "未找到 components 目录"
+        raise AssemblyError(msg) from None
 
     components = []
+    table = Table(title="扫描到的组件")
+    table.add_column("组件名", style="cyan")
+    table.add_column("状态", style="green")
+
     for item in components_path.iterdir():
         if item.is_dir():
             # 检查是否有几何体文件
             geom_file = item / f"{item.name}_geom.usd"
             if geom_file.exists():
                 components.append(item.name)
-                console.print(f"[green]发现组件: {item.name}[/green]")
+                table.add_row(item.name, "✓ 有效")
             else:
-                console.print(f"[yellow]跳过目录 {item.name} (未找到几何体文件)[/yellow]")
+                table.add_row(item.name, "[yellow]✗ 缺少几何体文件[/yellow]")
+
+    if table.rows:
+        console.print(table)
+
+    if not components:
+        msg = "未找到任何有效组件（需要包含*_geom.usd文件）"
+        raise AssemblyError(msg)
 
     return components
 
 
 def create_assembly_main(output_path: str, assembly_name: str, components: list[str]) -> None:
-    """从模板创建 assembly 主入口文件."""
+    """从模板创建 assembly 主入口文件.
+
+    Raises
+    ------
+        AssemblyError: 当创建失败时
+    """
     template_path = get_template_dir() / "{$assembly_name}" / "{$assembly_name}.usda"
 
-    # 读取模板
-    with open(template_path, encoding="utf-8") as f:
-        template_content = f.read()
+    try:
+        # 读取模板
+        with Path.open(template_path, encoding="utf-8") as f:
+            template_content = f.read()
 
-    # 先进行基础替换
-    template = Template(template_content)
-    content = template.safe_substitute(assembly_name=assembly_name)
+        # 先进行基础替换
+        template = Template(template_content)
+        content = template.safe_substitute(assembly_name=assembly_name)
 
-    # 使用USD API来正确添加多个组件引用
-    # 创建临时文件
-    temp_file = Path(output_path).with_suffix(".temp.usda")
-    with open(temp_file, "w", encoding="utf-8") as f:
-        f.write(content)
+        # 使用USD API来正确添加多个组件引用
+        # 创建临时文件
+        temp_file = Path(output_path).with_suffix(".temp.usda")
+        with Path.open(temp_file, "w", encoding="utf-8") as f:
+            f.write(content)
 
-    # 用USD API加载并修改
-    stage = Usd.Stage.Open(str(temp_file))
-    if not stage:
-        console.print(f"[red]无法打开临时USD文件: {temp_file}[/red]")
-        return
+        # 用USD API加载并修改
+        stage = Usd.Stage.Open(str(temp_file))
+        if not stage:
+            msg = f"无法打开临时USD文件: {temp_file}"
 
-    # 获取assembly prim
-    assembly_prim = stage.GetPrimAtPath(f"/{assembly_name}")
-    if not assembly_prim:
-        console.print(f"[red]未找到assembly prim: /{assembly_name}[/red]")
-        return
+        # 获取assembly prim
+        assembly_prim = stage.GetPrimAtPath(f"/{assembly_name}")
+        if not assembly_prim:
+            msg = f"未找到assembly prim: /{assembly_name}"
 
-    # 为每个组件创建引用
-    for component_name in components:
-        component_ref_path = f"./components/{component_name}/{component_name}.usd"
-        component_prim = stage.DefinePrim(Sdf.Path(f"/{assembly_name}/{component_name}"))
-        component_prim.GetReferences().AddReference(component_ref_path)
-        console.print(f"[green]添加组件引用: {component_name}[/green]")
+        # 为每个组件创建引用
+        for component_name in components:
+            component_ref_path = f"./components/{component_name}/{component_name}.usd"
+            component_prim = stage.DefinePrim(Sdf.Path(f"/{assembly_name}/{component_name}"))
+            component_prim.GetReferences().AddReference(component_ref_path)
 
-    # 保存到最终路径
-    stage.Export(output_path)
+        # 保存到最终路径
+        stage.Export(output_path)
 
-    # 清理临时文件
-    temp_file.unlink(missing_ok=True)
+        # 清理临时文件
+        temp_file.unlink(missing_ok=True)
 
-    console.print(f"[green]保存assembly文件: {output_path}[/green]")
+        console.print(f"[green]✓ 生成assembly文件: {Path(output_path).name}[/green]")
+
+    except Exception as e:
+        if not msg:
+            msg = f"创建assembly文件失败: {e}"
+        raise AssemblyError(msg) from e
 
 
 def process_component(component_path: str, component_name: str) -> None:
-    """处理单个组件."""
-    console.print(f"\n[bold blue]=== 处理组件: {component_name} ===[/bold blue]")
+    """处理单个组件.
 
-    # 检测纹理文件
-    texture_files = detect_texture_files(component_path, component_name)
+    Raises
+    ------
+        AssemblyError: 当处理失败时
+    """
+    with console.status(f"[bold blue]处理组件: {component_name}[/bold blue]") as status:
+        try:
+            # 验证纹理文件
+            texture_dir = Path(component_path) / "textures"
+            texture_files = validate_texture_files(texture_dir, component_name)
 
-    # 创建 MaterialX 文件
-    if texture_files:
-        template_mtlx_path = (
-            get_template_dir()
-            / "{$assembly_name}"
-            / "components"
-            / "{$component_name}"
-            / "{$component_name}_mat.mtlx"
-        )
-        output_mtlx_path = Path(component_path) / f"{component_name}_mat.mtlx"
-        create_materialx_file(
-            str(template_mtlx_path),
-            str(output_mtlx_path),
-            component_name,
-            texture_files,
-        )
-    else:
-        console.print("[yellow]跳过 MaterialX 文件创建 (无纹理文件)[/yellow]")
+            # 创建 MaterialX 文件
+            if texture_files:
+                output_mtlx_path = Path(component_path) / f"{component_name}_mat.mtlx"
+                create_materialx_file(
+                    component_name,
+                    texture_files,
+                    str(output_mtlx_path),
+                )
+            else:
+                console.print(
+                    f"[yellow]⚠ 跳过 {component_name} 的 MaterialX 文件创建 (无纹理文件)[/yellow]",
+                )
 
-    # 创建主入口文件
-    main_file = Path(component_path) / f"{component_name}.usd"
-    create_component_main(str(main_file), component_name)
+            # 创建主入口文件
+            main_file = Path(component_path) / f"{component_name}.usd"
+            create_component_main(str(main_file), component_name)
 
-    # 创建 payload 文件
-    payload_file = Path(component_path) / f"{component_name}_payload.usd"
-    create_component_payload(str(payload_file), component_name)
+            # 创建 payload 文件
+            payload_file = Path(component_path) / f"{component_name}_payload.usd"
+            create_component_payload(str(payload_file), component_name)
 
-    # 创建外观文件
-    look_file = Path(component_path) / f"{component_name}_look.usd"
-    create_component_look(str(look_file), component_name)
+            # 创建外观文件
+            look_file = Path(component_path) / f"{component_name}_look.usd"
+            create_component_look(str(look_file), component_name)
+
+            console.print(f"[green]✓ 组件 {component_name} 处理完成[/green]")
+
+        except TextureValidationError as e:
+            msg = f"组件 {component_name} 纹理验证失败: {e}"
+            raise AssemblyError(msg) from e
+        except Exception as e:
+            msg = f"处理组件 {component_name} 失败: {e}"
+            raise AssemblyError(msg) from e
 
 
 @app.command()
-def assembly(base_path: str = "./") -> None:
+def assembly(
+    base_path: str = typer.Argument("./", help="资产目录路径"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="显示详细信息"),
+) -> None:
     """装配 USD assembly."""
-    base_path = Path(base_path).resolve()
-    assembly_name = base_path.name
+    try:
+        base_path_obj = Path(base_path).resolve()
+        assembly_name = base_path_obj.name
 
-    console.print(f"[bold blue]=== 装配 USD Assembly: {assembly_name} ===[/bold blue]")
-    console.print(f"[blue]路径: {base_path}[/blue]")
+        # 显示标题
+        console.print(
+            Panel.fit(
+                f"[bold blue]USD Assembly 装配工具[/bold blue]\n"
+                f"[blue]项目: {assembly_name}[/blue]\n"
+                f"[blue]路径: {base_path_obj}[/blue]",
+                border_style="blue",
+            ),
+        )
 
-    # 扫描组件
-    components = scan_components(str(base_path))
+        # 扫描组件
+        components = scan_components(str(base_path_obj))
+        console.print(f"\n[green]找到 {len(components)} 个有效组件[/green]")
 
-    if not components:
-        console.print("[red]错误: 未找到任何组件[/red]")
-        return
+        # 处理每个组件
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("处理组件...", total=len(components))
 
-    console.print(f"[green]找到 {len(components)} 个组件: {components}[/green]")
+            for component_name in components:
+                component_path = base_path_obj / "components" / component_name
+                process_component(str(component_path), component_name)
+                progress.advance(task)
 
-    # 处理每个组件
-    for component_name in components:
-        component_path = base_path / "components" / component_name
-        process_component(str(component_path), component_name)
+        # 创建 assembly 主文件
+        console.print("\n[bold blue]生成 Assembly 主文件...[/bold blue]")
+        assembly_file = base_path_obj / f"{assembly_name}.usda"
+        create_assembly_main(str(assembly_file), assembly_name, components)
 
-    # 创建 assembly 主文件
-    assembly_file = base_path / f"{assembly_name}.usda"
-    create_assembly_main(str(assembly_file), assembly_name, components)
+        # 完成
+        console.print(
+            Panel.fit(
+                "[bold green]✅ Assembly 装配完成![/bold green]",
+                border_style="green",
+            ),
+        )
 
-    console.print("\n[bold green]✓ Assembly 装配完成![/bold green]")
+    except AssemblyError as e:
+        console.print(f"[bold red]❌ 装配失败: {e}[/bold red]")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"[bold red]❌ 未知错误: {e}[/bold red]")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(1) from e
+
+
+if __name__ == "__main__":
+    app()

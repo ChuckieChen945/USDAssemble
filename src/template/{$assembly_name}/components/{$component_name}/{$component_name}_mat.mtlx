@@ -16,7 +16,7 @@
   </nodegraph>
 
 
-  <open_pbr_surface name="component_name" type="surfaceshader">
+  <open_pbr_surface name="${component_name}" type="surfaceshader">
     <input name="base_color" type="color3" nodegraph="NG_${component_name}" output="base_color_output" />
     <input name="base_metalness" type="float" nodegraph="NG_${component_name}" output="metalness_output" />
     <input name="specular_roughness" type="float" nodegraph="NG_${component_name}" output="roughness_output" />
@@ -26,7 +26,7 @@
 
 
   <surfacematerial name="M_${component_name}" type="material">
-    <input name="surfaceshader" type="surfaceshader" nodename="open_pbr_surface1" />
+    <input name="${component_name}" type="surfaceshader" nodename="open_pbr_surface1" />
   </surfacematerial>
 
 </materialx>

@@ -5,40 +5,76 @@
 """
 
 from pathlib import Path
+from string import Template
+from typing import Dict
 
-import MaterialX as mx
+import MaterialX
+from rich.console import Console
+
+from usdassemble.utils import get_template_dir
+
+console = Console()
+
+
+class MaterialXError(Exception):
+    """MaterialX 处理错误."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 
 def create_materialx_file(
-    template_mtlx_path: str,
-    output_mtlx_path: str,
     component_name: str,
     texture_files: dict[str, str],
+    output_mtlx_path: str,
 ) -> None:
-    """处理棋盘材质：加载原始MaterialX文件，连接贴图，并输出新文件."""
-    # 创建MaterialX文档
-    doc = mx.createDocument()
+    """处理棋盘材质：从模板创建MaterialX文件，连接贴图，并输出新文件.
 
-    # TODO: 优化重构 create_materialx_file , 让其使用 create_from_template
-    # TODO:  print 改为 console.print()
+    Args:
+        component_name: 组件名称
+        texture_files: 纹理文件映射 {纹理类型: 相对路径}
+        output_mtlx_path: 输出MaterialX文件路径
 
+    Raises
+    ------
+        MaterialXError: 当处理失败时
+    """
     try:
-        # 读取原始文件
-        mx.readFromXmlFile(doc, template_mtlx_path)
-        print(f"成功加载模板材质文件: {template_mtlx_path}")
+        # 获取模板路径
+        template_mtlx_path = (
+            get_template_dir()
+            / "{$assembly_name}"
+            / "components"
+            / "{$component_name}"
+            / "{$component_name}_mat.mtlx"
+        )
 
-        # 查找compound1节点图
-        compound_ng = doc.getNodeGraph("NG_component_name")
+        if not template_mtlx_path.exists():
+            msg = f"MaterialX模板文件不存在: {template_mtlx_path}"
+
+        # 使用模板替换基础变量
+        with Path.open(template_mtlx_path, encoding="utf-8") as f:
+            template_content = f.read()
+
+        template = Template(template_content)
+        content = template.safe_substitute(component_name=component_name)
+
+        # 写入临时文件用于MaterialX处理
+        temp_file = Path(output_mtlx_path).with_suffix(".temp.mtlx")
+        with Path.open(temp_file, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        # 创建MaterialX文档并处理
+        doc = MaterialX.createDocument()
+        MaterialX.readFromXmlFile(doc, str(temp_file))
+
+        # 查找节点图
+        compound_ng = doc.getNodeGraph(f"NG_{component_name}")
         if not compound_ng:
-            print("错误: 找不到compound1节点图")
-            return False
-
-        # 重命名节点图为NG_component_name
-        compound_ng.setName(f"NG_{component_name}")
-        print(f"已重命名节点图为: NG_{component_name}")
+            msg = f"找不到节点图: NG_{component_name}"
 
         # 为每个image节点添加file输入
-        # TODO 删除多余的，没有载入贴图的节点
+        added_textures = []
         for node_name, texture_path in texture_files.items():
             image_node = compound_ng.getNode(node_name)
             if image_node:
@@ -46,36 +82,48 @@ def create_materialx_file(
                 file_input = image_node.addInput("file", "filename")
                 file_input.setValue(texture_path)
 
-                # 为base color贴图设置colorspace
-                if node_name == "base_color":
-                    file_input.setAttribute("colorspace", "srgb_texture")
-
-                print(f"已为节点 {node_name} 添加贴图: {texture_path}")
+                added_textures.append(node_name)
             else:
-                print(f"警告: 找不到节点 {node_name}")
+                console.print(f"[yellow]⚠ 警告: 节点图中未找到节点 {node_name}[/yellow]")
 
-        # 查找并修改shader节点
-        # 找到open_pbr_surface节点并重命名
-        pbr_surface = doc.getNode("open_pbr_surface1")
-        if pbr_surface:
-            pbr_surface.setName(f"{component_name}")
+        # 清理未使用的图像节点
+        _cleanup_unused_image_nodes(compound_ng, set(texture_files.keys()))
 
-        # 修改材质节点名称
-        material = doc.getNode("OpenPBR_Surface1")
-        if material:
-            material.setName(f"M_{component_name}")
-            # 更新surfaceshader输入的引用
-            shader_input = material.getInput("surfaceshader")
-            if shader_input:
-                shader_input.setNodeName(f"{component_name}")
-            print(f"已重命名材质节点为: M_{component_name}")
+        # 输出最终的MaterialX文件
+        MaterialX.writeToXmlFile(doc, output_mtlx_path)
 
-        # 输出修改后的MaterialX文件
-        mx.writeToXmlFile(doc, output_mtlx_path)
-        print(f"\n成功输出材质文件: {output_mtlx_path}")
+        # 清理临时文件
+        temp_file.unlink(missing_ok=True)
 
-        return True
+        console.print(
+            f"[green]✓ 生成MaterialX文件: {Path(output_mtlx_path).name} (包含{len(added_textures)}个纹理)[/green]",
+        )
 
     except Exception as e:
-        print(f"处理过程中发生错误: {e!s}")
-        return False
+        # 清理临时文件
+        if "temp_file" in locals():
+            temp_file.unlink(missing_ok=True)
+        if not msg:
+            msg = f"创建MaterialX文件失败: {e}"
+        raise MaterialXError(msg) from e
+
+
+def _cleanup_unused_image_nodes(node_graph: MaterialX.NodeGraph, used_texture_types: set) -> None:
+    """清理未使用的图像节点.
+
+    Args:
+        node_graph: MaterialX节点图
+        used_texture_types: 已使用的纹理类型集合
+    """
+    # 获取所有image节点
+    image_nodes = [node for node in node_graph.getNodes() if node.getType() == "image"]
+
+    # 删除未使用的image节点
+    removed_count = 0
+    for node in image_nodes:
+        if node.getName() not in used_texture_types:
+            node_graph.removeNode(node.getName())
+            removed_count += 1
+
+    if removed_count > 0:
+        console.print(f"[blue]清理了 {removed_count} 个未使用的图像节点[/blue]")
