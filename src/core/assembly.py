@@ -5,8 +5,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from src.utils.path_utils import get_component_directory_and_type
-from src.utils.utils import scan_component_info
 
 from core.component import ComponentProcessor
 from domain.enums import ComponentType
@@ -15,6 +13,8 @@ from domain.models import ComponentInfo
 from services.file_service import FileService
 from services.template_service import TemplateService
 from services.usd_service import UsdService
+from utils.path_utils import get_component_directory_and_type
+from utils.utils import scan_component_info
 
 console = Console()
 

@@ -15,7 +15,7 @@ class "__class__"
 
 def Xform "${assembly_or_component_name}" (
     kind = "assembly"
-    prepend inherits = </__class__/"${assembly_or_component_name}">
+    prepend inherits = </__class__/${assembly_or_component_name}>
 )
 {
 

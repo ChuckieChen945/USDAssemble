@@ -3,9 +3,9 @@
 from pathlib import Path
 
 from rich.console import Console
-from src.domain.models import ComponentInfo
 
 import MaterialX
+from domain.models import ComponentInfo
 from services.file_service import FileService
 from services.template_service import TemplateService
 

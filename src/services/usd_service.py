@@ -1,7 +1,6 @@
-"""USD文件操作服务."""
+"""USD文件处理服务."""
 
 from pathlib import Path
-from string import Template
 
 from pxr import Sdf, Usd
 from rich.console import Console
@@ -16,9 +15,9 @@ console = Console()
 
 
 class UsdService:
-    """USD文件操作服务.
+    """USD文件处理服务.
 
-    负责所有的USD文件创建和操作，包括assembly文件、组件文件等。
+    负责所有的USD文件操作，包括创建、修改、引用等。
     """
 
     def __init__(self) -> None:
@@ -32,11 +31,11 @@ class UsdService:
         assembly_name: str,
         components: list[ComponentInfo],
     ) -> None:
-        """从模板创建assembly主入口文件.
+        """创建assembly主文件.
 
         Args:
             output_path: 输出文件路径
-            assembly_name: 装配名称
+            assembly_name: assembly名称
             components: 组件信息列表
 
         Raises
@@ -44,10 +43,8 @@ class UsdService:
             UsdServiceError: 当创建失败时
         """
         if not components:
-            msg = "组件列表为空"
-            raise UsdServiceError(msg)
+            self._raise_error("组件列表不能为空")
 
-        # 所有组件应该是同一类型
         component_type = components[0].component_type
 
         try:
@@ -64,16 +61,15 @@ class UsdService:
             # 用USD API加载并修改
             stage = Usd.Stage.Open(str(temp_file))
             if not stage:
-                msg = f"无法打开临时USD文件: {temp_file}"
-                # FIXME: Abstract `raise` to an inner function (Ruff TRY301)
-                raise UsdServiceError(msg)
+                self._raise_error(f"无法打开临时USD文件: {temp_file}")
 
             # 获取assembly prim
             assembly_prim = stage.GetPrimAtPath(f"/{assembly_name}")
             if not assembly_prim:
-                msg = f"未找到assembly prim: /{assembly_name}"
-                # FIXME: Abstract `raise` to an inner function (Ruff TRY301)
-                raise UsdServiceError(msg)
+                self._raise_error(f"未找到assembly prim: /{assembly_name}")
+
+            # 根据组件类型设置assembly prim的类型
+            self._set_assembly_prim_type(assembly_prim, component_type)
 
             # 为每个组件创建引用
             for component_info in components:
@@ -101,9 +97,32 @@ class UsdService:
             if "temp_file" in locals() and temp_file.exists():
                 temp_file.unlink()
             if not isinstance(e, UsdServiceError):
-                msg = f"创建assembly文件失败: {e}"
-                raise UsdServiceError(msg) from e
+                self._raise_error(f"创建assembly文件失败: {e}")
             raise
+
+    def _set_assembly_prim_type(self, assembly_prim, component_type) -> None:
+        """根据组件类型设置assembly prim的类型.
+
+        Args:
+            assembly_prim: assembly prim对象
+            component_type: 组件类型
+        """
+        # 当 component_type 为 subcomponent 时，将 assembly_prim 的 type 由原来的 assembly 改为 component
+        if component_type.kind == "subcomponent":
+            model_api = Usd.ModelAPI(assembly_prim)
+            model_api.SetKind("component")
+
+    def _raise_error(self, message: str) -> None:
+        """统一的错误抛出函数.
+
+        Args:
+            message: 错误消息
+
+        Raises
+        ------
+            UsdServiceError: 统一的USD服务错误
+        """
+        raise UsdServiceError(message)
 
     def create_component_main_simple(
         self,
@@ -139,8 +158,7 @@ class UsdService:
 
         except Exception as e:
             if not isinstance(e, UsdServiceError):
-                msg = f"创建组件主文件失败: {e}"
-                raise UsdServiceError(msg) from e
+                self._raise_error(f"创建组件主文件失败: {e}")
             raise
 
     def _set_component_kind(self, file_path: str, component_name: str, kind: str) -> None:
@@ -156,13 +174,9 @@ class UsdService:
             if stage:
                 component_prim = stage.GetPrimAtPath(f"/{component_name}")
                 if component_prim:
+                    # 设置kind值
                     model_api = Usd.ModelAPI(component_prim)
                     model_api.SetKind(kind)
-                    stage.Save()
-
-                    console.print(
-                        f"[blue]✓ 设置组件 {component_name} 的kind为: {kind}[/blue]",
-                    )
+                    stage.GetRootLayer().Save()
         except Exception as e:
-            # 这里不抛出异常，只是警告，因为kind设置失败不应该阻止整个流程
-            console.print(f"[yellow]⚠ 设置kind失败: {e}[/yellow]")
+            console.print(f"[yellow]⚠ 设置kind值失败: {e}[/yellow]")

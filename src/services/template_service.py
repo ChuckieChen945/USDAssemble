@@ -4,11 +4,11 @@ from pathlib import Path
 from string import Template
 
 from rich.console import Console
-from src.utils.path_utils import get_template_dir
 
 from domain.enums import ComponentType
 from domain.exceptions import TemplateServiceError
 from services.file_service import FileService
+from utils.path_utils import get_template_dir
 
 console = Console()
 
@@ -25,35 +25,45 @@ class TemplateService:
 
     def get_template_path(
         self,
+        component_type: ComponentType,
         template_filename: str,
-        component_type: ComponentType = None,
     ) -> Path:
         """获取模板文件路径.
 
         Args:
+            component_type: 组件类型
             template_filename: 模板文件名
-            component_type: 组件类型（可选）
 
         Returns
         -------
             Path: 模板文件路径
         """
-        if component_type:
-            return (
-                get_template_dir()
-                / "{$assembly_or_component_name}"
-                / "components_or_subcomponents"
-                / "{$component_or_subcomponent_name}"
-                / template_filename
-            )
+        return (
+            get_template_dir()
+            / "{$assembly_or_component_name}"
+            / "components_or_subcomponents"
+            / "{$component_or_subcomponent_name}"
+            / template_filename
+        )
+
+    def get_assembly_template_path(self, template_filename: str) -> Path:
+        """获取assembly模板文件路径.
+
+        Args:
+            template_filename: 模板文件名
+
+        Returns
+        -------
+            Path: 模板文件路径
+        """
         return get_template_dir() / "{$assembly_or_component_name}" / template_filename
 
     def create_from_template(
         self,
+        component_type: ComponentType,
         template_filename: str,
         output_path: Path,
         substitutions: dict[str, str],
-        component_type: ComponentType = None,
     ) -> None:
         """从模板文件创建新文件，使用string.Template进行替换.
 
@@ -67,11 +77,10 @@ class TemplateService:
         ------
             TemplateServiceError: 当模板文件不存在或处理失败时
         """
-        template_path = self.get_template_path(template_filename, component_type)
+        template_path = self.get_template_path(component_type, template_filename)
 
         if not template_path.exists():
-            msg = f"模板文件不存在: {template_path}"
-            raise TemplateServiceError(msg)
+            self._raise_error(f"模板文件不存在: {template_path}")
 
         try:
             # 确保输出目录存在
@@ -91,9 +100,20 @@ class TemplateService:
 
         except Exception as e:
             if not isinstance(e, TemplateServiceError):
-                msg = f"模板处理失败: {e}"
-                raise TemplateServiceError(msg) from e
+                self._raise_error(f"模板处理失败: {e}")
             raise
+
+    def _raise_error(self, message: str) -> None:
+        """统一的错误抛出函数.
+
+        Args:
+            message: 错误消息
+
+        Raises
+        ------
+            TemplateServiceError: 统一的模板服务错误
+        """
+        raise TemplateServiceError(message)
 
     def create_component_payload(
         self,
@@ -102,13 +122,13 @@ class TemplateService:
         component_type: ComponentType,
     ) -> None:
         """从模板创建payload文件."""
-        substitutions = {"component_name": component_name}
+        substitutions = {"component_or_subcomponent_name": component_name}
 
         self.create_from_template(
-            "{$component_name}_payload.usd",
+            component_type,
+            "{$component_or_subcomponent_name}_payload.usd",
             Path(output_path),
             substitutions,
-            component_type,
         )
 
     def create_component_look(
@@ -118,88 +138,74 @@ class TemplateService:
         component_type: ComponentType,
     ) -> None:
         """从模板创建外观文件."""
-        substitutions = {"component_name": component_name}
+        substitutions = {"component_or_subcomponent_name": component_name}
 
         self.create_from_template(
-            "{$component_name}_look.usd",
+            component_type,
+            "{$component_or_subcomponent_name}_look.usd",
             Path(output_path),
             substitutions,
-            component_type,
         )
 
     def create_assembly_main_template(
         self,
         assembly_name: str,
     ) -> str:
-        """从模板创建assembly主文件的基础内容.
+        """创建assembly主文件模板内容.
 
         Args:
-            output_path: 输出文件路径
-            assembly_name: 装配名称
+            assembly_name: assembly名称
 
         Returns
         -------
-            str: 模板替换后的内容
+            str: 模板内容
 
         Raises
         ------
-            TemplateServiceError: 当模板处理失败时
+            TemplateServiceError: 当模板文件不存在时
         """
-        template_path = self.get_template_path("{$assembly_or_component_name}.usda")
+        template_path = self.get_assembly_template_path("{$assembly_or_component_name}.usda")
 
         if not template_path.exists():
-            msg = f"模板文件不存在: {template_path}"
-            raise TemplateServiceError(msg)
+            self._raise_error(f"Assembly模板文件不存在: {template_path}")
 
-        try:
-            # 读取模板内容
-            template_content = self.file_service.read_file(template_path)
+        # 读取模板内容
+        template_content = self.file_service.read_file(template_path)
 
-            # 进行基础替换
-            template = Template(template_content)
-            return template.safe_substitute(assembly_name=assembly_name)
-
-        except Exception as e:
-            msg = f"处理assembly模板失败: {e}"
-            raise TemplateServiceError(msg) from e
+        # 进行替换
+        template = Template(template_content)
+        return template.safe_substitute(assembly_or_component_name=assembly_name)
 
     def create_component_main_template(
         self,
         component_name: str,
         component_type: ComponentType,
     ) -> str:
-        """从模板创建组件主文件的基础内容.
+        """创建组件主文件模板内容.
 
         Args:
-            output_path: 输出文件路径
             component_name: 组件名称
             component_type: 组件类型
 
         Returns
         -------
-            str: 模板替换后的内容
+            str: 模板内容
 
         Raises
         ------
-            TemplateServiceError: 当模板处理失败时
+            TemplateServiceError: 当模板文件不存在时
         """
         template_path = self.get_template_path(
-            "{$component_or_subcomponent_name}.usd",
             component_type,
+            "{$component_or_subcomponent_name}.usd",
         )
 
         if not template_path.exists():
-            msg = f"模板文件不存在: {template_path}"
-            raise TemplateServiceError(msg)
+            self._raise_error(f"组件模板文件不存在: {template_path}")
 
-        try:
-            # 读取模板内容
-            template_content = self.file_service.read_file(template_path)
+        # 读取模板内容
+        template_content = self.file_service.read_file(template_path)
 
-            # 进行替换
-            template = Template(template_content)
-            return template.safe_substitute(component_name=component_name)
-
-        except Exception as e:
-            msg = f"处理组件模板失败: {e}"
-            raise TemplateServiceError(msg) from e
+        # 进行替换
+        template = Template(template_content)
+        return template.safe_substitute(component_or_subcomponent_name=component_name)
