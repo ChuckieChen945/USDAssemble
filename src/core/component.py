@@ -5,20 +5,14 @@ from pathlib import Path
 from rich.console import Console
 
 from core.variant import VariantProcessor
+from domain.exceptions import ComponentError
+from domain.models import ComponentInfo
 from materialx.processor import MaterialXProcessor
 from services.file_service import FileService
 from services.template_service import TemplateService
 from services.usd_service import UsdService
-from utils.utils import ComponentInfo
 
 console = Console()
-
-
-class ComponentError(Exception):
-    """组件处理错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 
 class ComponentProcessor:

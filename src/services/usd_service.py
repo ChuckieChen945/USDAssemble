@@ -6,17 +6,13 @@ from string import Template
 from pxr import Sdf, Usd
 from rich.console import Console
 
+from domain.enums import ComponentType
+from domain.exceptions import UsdServiceError
+from domain.models import ComponentInfo
 from services.file_service import FileService
-from utils.utils import ComponentInfo, ComponentType, get_template_dir
+from services.template_service import TemplateService
 
 console = Console()
-
-
-class UsdServiceError(Exception):
-    """USD服务错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 
 class UsdService:
@@ -28,6 +24,7 @@ class UsdService:
     def __init__(self) -> None:
         """初始化USD服务."""
         self.file_service = FileService()
+        self.template_service = TemplateService()
 
     def create_assembly_main(
         self,
@@ -53,20 +50,11 @@ class UsdService:
         # 所有组件应该是同一类型
         component_type = components[0].component_type
 
-        # TODO: 重构，看看是否将以下从模板创建的部分逻辑，归纳到 template_service.TemplateService中
-        template_path = (
-            get_template_dir()
-            / "{$assembly_or_component_name}"
-            / "{$assembly_or_component_name}.usda"
-        )
-
         try:
-            # 读取模板
-            template_content = self.file_service.read_file(template_path)
-
-            # 先进行基础替换
-            template = Template(template_content)
-            content = template.safe_substitute(assembly_name=assembly_name)
+            # 使用模板服务创建基础内容
+            content = self.template_service.create_assembly_main_template(
+                assembly_name,
+            )
 
             # 使用USD API来正确添加多个组件引用
             # 创建临时文件
@@ -77,14 +65,14 @@ class UsdService:
             stage = Usd.Stage.Open(str(temp_file))
             if not stage:
                 msg = f"无法打开临时USD文件: {temp_file}"
-                # FIXME: Abstract `raise` to an inner function (RuffTRY301)
+                # FIXME: Abstract `raise` to an inner function (Ruff TRY301)
                 raise UsdServiceError(msg)
 
             # 获取assembly prim
             assembly_prim = stage.GetPrimAtPath(f"/{assembly_name}")
             if not assembly_prim:
                 msg = f"未找到assembly prim: /{assembly_name}"
-                # FIXME: Abstract `raise` to an inner function (RuffTRY301)
+                # FIXME: Abstract `raise` to an inner function (Ruff TRY301)
                 raise UsdServiceError(msg)
 
             # 为每个组件创建引用
@@ -135,27 +123,11 @@ class UsdService:
             UsdServiceError: 当创建失败时
         """
         try:
-            # TODO: 重构，看看是否将以下从模板创建的部分逻辑，归纳到 template_service.TemplateService中
-            # 获取模板路径
-            template_path = (
-                get_template_dir()
-                / "{$assembly_or_component_name}"
-                / "components_or_subcomponents"
-                / "{$component_or_subcomponent_name}"
-                / "{$component_or_subcomponent_name}.usd"
+            # 使用模板服务创建基础内容
+            content = self.template_service.create_component_main_template(
+                component_name,
+                component_type,
             )
-
-            if not template_path.exists():
-                msg = f"模板文件不存在: {template_path}"
-                # FIXME: Abstract `raise` to an inner function (RuffTRY301)
-                raise UsdServiceError(msg)
-
-            # 读取模板内容
-            template_content = self.file_service.read_file(template_path)
-
-            # 进行替换
-            template = Template(template_content)
-            content = template.safe_substitute(component_name=component_name)
 
             # 写入文件
             self.file_service.write_file(Path(output_path), content)

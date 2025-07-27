@@ -5,18 +5,12 @@ from pathlib import Path
 from pxr import Usd, UsdShade
 from rich.console import Console
 
+from domain.exceptions import VariantError
+from domain.models import ComponentInfo
 from services.template_service import TemplateService
 from services.usd_service import UsdService
-from utils.utils import ComponentInfo
 
 console = Console()
-
-
-class VariantError(Exception):
-    """变体处理错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 
 class VariantProcessor:

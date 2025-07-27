@@ -5,26 +5,18 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from src.utils.path_utils import get_component_directory_and_type
+from src.utils.utils import scan_component_info
 
 from core.component import ComponentProcessor
+from domain.enums import ComponentType
+from domain.exceptions import AssemblyError
+from domain.models import ComponentInfo
 from services.file_service import FileService
 from services.template_service import TemplateService
 from services.usd_service import UsdService
-from utils import (
-    ComponentInfo,
-    ComponentType,
-    get_component_directory_and_type,
-    scan_component_info,
-)
 
 console = Console()
-
-
-class AssemblyError(Exception):
-    """装配过程中的错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 
 class AssemblyBuilder:
@@ -117,13 +109,11 @@ class AssemblyBuilder:
 
         console.print(table)
 
-    # TODO：这个verbose参数是 Typer 包 注入的吗，没用的话删除
-    def build_assembly(self, base_path: str, verbose: bool = False) -> None:
+    def build_assembly(self, base_path: str) -> None:
         """构建USD装配.
 
         Args:
             base_path: 资产目录路径
-            verbose: 是否显示详细信息
 
         Raises
         ------

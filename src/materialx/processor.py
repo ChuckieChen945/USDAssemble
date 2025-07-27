@@ -5,19 +5,14 @@ from pathlib import Path
 from rich.console import Console
 
 import MaterialX
+from domain.enums import ComponentType
+from domain.exceptions import MaterialXError
+from domain.models import ComponentInfo
 from materialx.variant_processor import VariantMaterialXProcessor
 from services.file_service import FileService
 from services.template_service import TemplateService
-from utils.utils import ComponentInfo, ComponentType
 
 console = Console()
-
-
-class MaterialXError(Exception):
-    """MaterialX处理错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 
 class MaterialXProcessor:
@@ -100,7 +95,7 @@ class MaterialXProcessor:
             compound_ng = doc.getNodeGraph(f"NG_{component_name}")
             if not compound_ng:
                 msg = f"找不到节点图: NG_{component_name}"
-                # FIXME:Abstract `raise` to an inner function (Ruff TRY301)
+                # FIXME: Abstract `raise` to an inner function (Ruff TRY301)
                 raise MaterialXError(msg)
 
             # 处理纹理节点

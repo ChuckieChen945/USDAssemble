@@ -3,11 +3,11 @@
 from pathlib import Path
 
 from rich.console import Console
+from src.domain.models import ComponentInfo
 
 import MaterialX
 from services.file_service import FileService
 from services.template_service import TemplateService
-from utils.utils import ComponentInfo
 
 console = Console()
 

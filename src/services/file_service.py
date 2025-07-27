@@ -2,14 +2,7 @@
 
 from pathlib import Path
 
-from utils.utils import ensure_directory
-
-
-class FileServiceError(Exception):
-    """文件服务错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
+from domain.exceptions import FileServiceError
 
 
 class FileService:
@@ -18,14 +11,16 @@ class FileService:
     负责所有的文件和目录操作，包括创建、读取、写入等。
     """
 
-    # TODO: 重构，将utils中的ensure_directory整合到ensure_directory_exists中
     def ensure_directory_exists(self, path: Path) -> None:
         """确保目录存在.
 
         Args:
             path: 目录路径
         """
-        ensure_directory(path)
+        # 如果路径存在且是文件，或者路径有文件扩展名（暗示这是一个文件路径）
+        if (path.exists() and path.is_file()) or (not path.exists() and path.suffix):
+            path = path.parent
+        path.mkdir(parents=True, exist_ok=True)
 
     def list_directories(self, path: Path) -> list[Path]:
         """列出指定路径下的所有目录.

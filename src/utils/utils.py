@@ -1,11 +1,12 @@
 """USD Assembly工具函数."""
 
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
+
+from domain.enums import ComponentType
+from domain.exceptions import TextureValidationError, VariantError
+from domain.models import ComponentInfo, VariantInfo
 
 console = Console()
 
@@ -30,123 +31,6 @@ TEXTURE_PATTERNS = {
     "sheen": ["*sheen*"],
     "transmission": ["*transmission*"],
 }
-
-
-@dataclass
-class VariantInfo:
-    """变体信息."""
-
-    name: str
-    textures: dict[str, str]  # 纹理类型 -> 相对路径
-    description: str | None = None
-
-
-@dataclass
-class ComponentInfo:
-    """组件信息."""
-
-    name: str
-    component_type: "ComponentType"
-    has_geometry: bool = False
-    variants: list[VariantInfo] = None
-    textures: dict[str, str] = None  # 非变体纹理
-
-    def __post_init__(self) -> None:
-        """初始化后处理."""
-        if self.variants is None:
-            self.variants = []
-        if self.textures is None:
-            self.textures = {}
-
-    @property
-    def has_variants(self) -> bool:
-        """是否有变体."""
-        return len(self.variants) > 0
-
-    @property
-    def is_valid(self) -> bool:
-        """组件是否有效（有几何体文件）."""
-        return self.has_geometry
-
-
-class ComponentType(Enum):
-    """组件类型枚举."""
-
-    COMPONENT = ("component", "components")
-    SUBCOMPONENT = ("subcomponent", "subcomponents")
-
-    def __init__(self, kind: str, directory: str) -> None:
-        self.kind = kind
-        self.directory = directory
-
-    @classmethod
-    def from_directory(cls, directory_name: str) -> "ComponentType":
-        """从目录名获取组件类型."""
-        for component_type in cls:
-            if component_type.directory == directory_name:
-                return component_type
-        msg = f"不支持的组件目录类型: {directory_name}"
-        raise ValueError(msg)
-
-    @classmethod
-    def detect_from_path(cls, base_path: Path) -> Optional["ComponentType"]:
-        """从基础路径检测组件类型."""
-        for component_type in cls:
-            if (base_path / component_type.directory).exists():
-                return component_type
-        return None
-
-
-class TextureValidationError(Exception):
-    """纹理文件验证错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-
-class VariantError(Exception):
-    """变体处理错误."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-
-# TODO: 重构，将utils中的ensure_directory整合到ensure_directory_exists中
-def ensure_directory(path: Path) -> None:
-    """确保目录存在."""
-    # 如果路径存在且是文件，或者路径有文件扩展名（暗示这是一个文件路径）
-    if (path.exists() and path.is_file()) or (not path.exists() and path.suffix):
-        path = path.parent
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def get_template_dir() -> Path:
-    """获取模板目录路径."""
-    return Path(__file__).parent.parent / "template"
-
-
-def get_component_directory_and_type(base_path: Path) -> tuple[Path, ComponentType]:
-    """获取组件目录路径和类型.
-
-    Args:
-        base_path: 基础路径
-
-    Returns
-    -------
-        Tuple[Path, ComponentType]: 组件目录路径和类型
-
-    Raises
-    ------
-        ValueError: 当未找到支持的组件目录时
-    """
-    component_type = ComponentType.detect_from_path(base_path)
-    if component_type is None:
-        available_types = [t.directory for t in ComponentType]
-        msg = f"未找到支持的组件目录 ({', '.join(available_types)}) 在路径: {base_path}"
-        raise ValueError(msg)
-
-    component_dir = base_path / component_type.directory
-    return component_dir, component_type
 
 
 def find_texture_files_by_pattern(texture_dir: Path, patterns: list[str]) -> list[Path]:
