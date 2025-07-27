@@ -111,6 +111,7 @@ class VariantError(Exception):
         super().__init__(message)
 
 
+# TODO: 重构，将utils中的ensure_directory整合到ensure_directory_exists中
 def ensure_directory(path: Path) -> None:
     """确保目录存在."""
     # 如果路径存在且是文件，或者路径有文件扩展名（暗示这是一个文件路径）
@@ -165,7 +166,6 @@ def _validate_single_texture_set(
 
     Args:
         texture_dir: 纹理文件目录
-        component_name: 组件名称
         context: 上下文信息（用于错误提示）
 
     Returns

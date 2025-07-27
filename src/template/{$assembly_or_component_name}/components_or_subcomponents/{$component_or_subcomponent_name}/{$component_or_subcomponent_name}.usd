@@ -1,0 +1,28 @@
+#usda 1.0
+(
+    defaultPrim = "${component_or_subcomponent_name}"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+class "__class__"
+{
+    class "${component_or_subcomponent_name}"
+    {
+    }
+}
+
+def Xform "${component_or_subcomponent_name}" (
+    prepend apiSchemas = ["GeomModelAPI"]
+    assetInfo = {
+        asset identifier = @./${component_or_subcomponent_name}.usd@
+        string name = "${component_or_subcomponent_name}"
+    }
+    prepend inherits = </__class__/${component_or_subcomponent_name}>
+    kind = "component"
+    payload = @./${component_or_subcomponent_name}_payload.usd@</${component_or_subcomponent_name}>
+)
+{
+    float3[] extentsHint = [(-0.35270807, 0, -0.35270807), (0.35270807, 0.01851505, 0.35270807)]
+}
+

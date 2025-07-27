@@ -1,0 +1,22 @@
+#usda 1.0
+(
+    defaultPrim = "${assembly_or_component_name}"
+    doc = "example"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+class "__class__"
+{
+    class "${assembly_or_component_name}"
+    {
+    }
+}
+
+def Xform "${assembly_or_component_name}" (
+    kind = "assembly"
+    prepend inherits = </__class__/"${assembly_or_component_name}">
+)
+{
+
+}

@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <materialx version="1.39" colorspace="lin_rec709" >
 
-  <!-- ${component_name} -->
-  <nodegraph name="NG_${component_name}">
+  <!-- ${component_or_subcomponent_name} -->
+  <nodegraph name="NG_${component_or_subcomponent_name}">
     <image name="base_color" type="color3">
       <input name="file" type="filename" value="" colorspace="srgb_texture" />
     </image>
@@ -24,15 +24,15 @@
     <output name="normal_output" type="vector3" nodename="normal_map" />
   </nodegraph>
 
-  <open_pbr_surface name="${component_name}" type="surfaceshader" nodedef="ND_open_pbr_surface_surfaceshader">
-    <input name="base_color" type="color3" nodegraph="NG_${component_name}" output="base_color_output" />
-    <input name="base_metalness" type="float" nodegraph="NG_${component_name}" output="metalness_output" />
-    <input name="specular_roughness" type="float" nodegraph="NG_${component_name}" output="roughness_output" />
-    <input name="geometry_normal" type="vector3" nodegraph="NG_${component_name}" output="normal_output" />
+  <open_pbr_surface name="${component_or_subcomponent_name}" type="surfaceshader" nodedef="ND_open_pbr_surface_surfaceshader">
+    <input name="base_color" type="color3" nodegraph="NG_${component_or_subcomponent_name}" output="base_color_output" />
+    <input name="base_metalness" type="float" nodegraph="NG_${component_or_subcomponent_name}" output="metalness_output" />
+    <input name="specular_roughness" type="float" nodegraph="NG_${component_or_subcomponent_name}" output="roughness_output" />
+    <input name="geometry_normal" type="vector3" nodegraph="NG_${component_or_subcomponent_name}" output="normal_output" />
   </open_pbr_surface>
 
-  <surfacematerial name="M_${component_name}" type="material"  nodedef="ND_surfacematerial">
-    <input name="surfaceshader" type="surfaceshader" nodename="${component_name}" />
+  <surfacematerial name="M_${component_or_subcomponent_name}" type="material"  nodedef="ND_surfacematerial">
+    <input name="surfaceshader" type="surfaceshader" nodename="${component_or_subcomponent_name}" />
   </surfacematerial>
 
 </materialx>
