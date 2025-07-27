@@ -67,11 +67,11 @@ class VariantProcessor:
         output_path: str,
     ) -> None:
         """从模板创建基础文件."""
-        substitutions = {"component_name": component_info.name}
+        substitutions = {"component_or_subcomponent_name": component_info.name}
 
         self.template_service.create_from_template(
             component_info.component_type,
-            f"{component_info.name}.usd",
+            r"{$component_or_subcomponent_name}.usd",
             Path(output_path),
             substitutions,
         )

@@ -65,8 +65,6 @@ class MaterialXProcessor:
         ------
             MaterialXError: 当处理失败时
         """
-        temp_file = None
-
         try:
             # 创建基础内容
             content = self._create_base_materialx_content(
@@ -74,13 +72,9 @@ class MaterialXProcessor:
                 component_info.component_type,
             )
 
-            # 写入临时文件用于MaterialX处理
-            temp_file = Path(output_mtlx_path).with_suffix(".temp.mtlx")
-            self.file_service.write_file(temp_file, content)
-
-            # 创建MaterialX文档并处理
+            # 使用内存中的XML处理，避免临时文件
             doc = MaterialX.createDocument()
-            MaterialX.readFromXmlFile(doc, str(temp_file))
+            self._load_xml_from_string(doc, content)
 
             # 查找节点图
             compound_ng = doc.getNodeGraph(f"NG_{component_info.name}")
@@ -103,10 +97,6 @@ class MaterialXProcessor:
             if not isinstance(e, MaterialXError):
                 self._raise_error(f"创建变体MaterialX文件失败: {e}")
             raise
-        finally:
-            # 清理临时文件
-            if temp_file and temp_file.exists():
-                temp_file.unlink(missing_ok=True)
 
     def _create_simple_materialx_file(
         self,
@@ -127,20 +117,13 @@ class MaterialXProcessor:
         ------
             MaterialXError: 当处理失败时
         """
-        temp_file = None
-
         try:
             # 创建基础内容
             content = self._create_base_materialx_content(component_name, component_type)
 
-            # TODO: 看看是否能不写入临时文件，在内存中处理
-            # 写入临时文件用于MaterialX处理
-            temp_file = Path(output_mtlx_path).with_suffix(".temp.mtlx")
-            self.file_service.write_file(temp_file, content)
-
-            # 创建MaterialX文档并处理
+            # 使用内存中的XML处理，避免临时文件
             doc = MaterialX.createDocument()
-            MaterialX.readFromXmlFile(doc, str(temp_file))
+            self._load_xml_from_string(doc, content)
 
             # 查找节点图
             compound_ng = doc.getNodeGraph(f"NG_{component_name}")
@@ -165,10 +148,6 @@ class MaterialXProcessor:
             if not isinstance(e, MaterialXError):
                 self._raise_error(f"创建MaterialX文件失败: {e}")
             raise
-        finally:
-            # 清理临时文件
-            if temp_file and temp_file.exists():
-                temp_file.unlink(missing_ok=True)
 
     def _raise_error(self, message: str) -> None:
         """统一的错误抛出函数.
@@ -266,10 +245,6 @@ class MaterialXProcessor:
             compound_ng: 复合节点图
             variant: 变体信息
         """
-        # 创建变体材质
-        variant_material = doc.addMaterial(f"MT_{variant.name}")
-        variant_material.setCategory("surfacematerial")
-
         # 创建变体节点图
         variant_ng = doc.addNodeGraph(f"NG_{variant.name}")
         variant_ng.setCategory("texture2d")
@@ -280,9 +255,28 @@ class MaterialXProcessor:
         # 处理变体的纹理
         self._process_texture_nodes(variant_ng, variant.textures, variant.name)
 
-        # 连接变体节点图到材质
-        # FIXME: 'MaterialX.PyMaterialXCore.Node' object has no attribute 'setNodeGraphString'
-        variant_material.setNodeGraphString(variant_ng.getName())
+        # 创建变体着色器
+        variant_shader = doc.addNode(
+            "open_pbr_surface",
+            f"{variant.name}_shader",
+            "surfaceshader",
+        )
+
+        # 连接节点图输出到着色器输入
+        self._connect_outputs_to_shader(variant_ng, variant_shader, variant_ng.getName())
+
+        # 创建变体材质
+        variant_material = doc.addNode(
+            "surfacematerial",
+            f"MT_{variant.name}",
+            "material",
+        )
+
+        # 连接着色器到材质
+        surface_input = variant_material.getInput("surfaceshader")
+        if not surface_input:
+            surface_input = variant_material.addInput("surfaceshader", "surfaceshader")
+        surface_input.setNodeName(variant_shader.getName())
 
     def _copy_node_graph_content(
         self,
@@ -322,3 +316,72 @@ class MaterialXProcessor:
         for node in nodes_to_remove:
             node_graph.removeNode(node.getName())
             console.print(f"[blue]✓ 清理未使用的图像节点: {node.getName()}[/blue]")
+
+    def _connect_outputs_to_shader(
+        self,
+        node_graph: MaterialX.NodeGraph,
+        shader: MaterialX.Node,
+        node_graph_name: str,
+    ) -> None:
+        """连接节点图输出到着色器.
+
+        Args:
+            node_graph: 节点图
+            shader: 着色器节点
+            node_graph_name: 节点图名称
+        """
+        # 输出名称到着色器输入名称的映射
+        input_mapping = {
+            "base_color_output": "base_color",
+            "metalness_output": "base_metalness",
+            "roughness_output": "specular_roughness",
+            "normal_output": "geometry_normal",
+        }
+
+        for output in node_graph.getOutputs():
+            output_name = output.getName()
+            if output_name.endswith("_output") and output_name in input_mapping:
+                shader_input_name = input_mapping[output_name]
+                shader_input = shader.getInput(shader_input_name)
+                if not shader_input:
+                    shader_input = shader.addInput(
+                        shader_input_name,
+                        output.getType(),
+                    )
+                shader_input.setNodeGraphString(node_graph_name)
+                shader_input.setOutputString(output_name)
+
+    def _load_xml_from_string(self, doc: MaterialX.Document, xml_content: str) -> None:
+        """从字符串加载XML到MaterialX文档.
+
+        Args:
+            doc: MaterialX文档
+            xml_content: XML内容字符串
+
+        Raises
+        ------
+            MaterialXError: 当XML解析失败时
+        """
+        try:
+            # 尝试使用readFromXmlString（如果可用）
+            if hasattr(MaterialX, "readFromXmlString"):
+                MaterialX.readFromXmlString(doc, xml_content)
+            else:
+                # 回退到临时文件方法
+                import tempfile
+
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    suffix=".mtlx",
+                    delete=False,
+                ) as temp_file:
+                    temp_file.write(xml_content)
+                    temp_file.flush()
+                    try:
+                        MaterialX.readFromXmlFile(doc, temp_file.name)
+                    finally:
+                        import os
+
+                        os.unlink(temp_file.name)
+        except Exception as e:
+            self._raise_error(f"解析MaterialX XML失败: {e}")
