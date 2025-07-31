@@ -123,7 +123,7 @@ CHESS_SET/
 (
     defaultPrim = "Chessboard"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 class "__class__"
@@ -157,7 +157,7 @@ def Xform "Chessboard" (
         @./Chessboard_look.usd@,
         @./Chessboard_geom.usd@
     ]
-    upAxis = "Y"
+    upAxis = "Z"
 )
 ```
 
@@ -167,7 +167,7 @@ def Xform "Chessboard" (
 (
     defaultPrim = "Chessboard"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 over "Chessboard"
@@ -196,7 +196,7 @@ over "Chessboard"
 (
     defaultPrim = "Chessboard"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 def Xform "Chessboard" (

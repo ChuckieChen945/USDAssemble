@@ -18,8 +18,8 @@ dependencies = [
     "usd-core>=25.5.1",
 ]
 
-[project.scripts] # https://docs.astral.sh/uv/concepts/projects/config/#command-line-interfaces
-usdassemble = "usdassemble.cli:app"
+[tool.hatch.build.targets.wheel]
+packages = ["src/"]
 
 [project.urls] # https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
 homepage = "https://github.com/ChuckieChen945/USDAssemble"

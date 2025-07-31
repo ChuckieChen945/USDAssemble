@@ -6,6 +6,6 @@
         @./${component_or_subcomponent_name}_look.usd@,
         @./${component_or_subcomponent_name}_geom.usd@
     ]
-    upAxis = "Y"
+    upAxis = "Z"
 )
 

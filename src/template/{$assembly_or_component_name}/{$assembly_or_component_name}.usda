@@ -3,7 +3,7 @@
     defaultPrim = "${assembly_or_component_name}"
     doc = "example"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 class "__class__"

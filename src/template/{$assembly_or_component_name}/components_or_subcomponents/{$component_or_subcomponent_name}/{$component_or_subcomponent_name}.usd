@@ -2,7 +2,7 @@
 (
     defaultPrim = "${component_or_subcomponent_name}"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 class "__class__"

@@ -7,7 +7,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 from typer.testing import CliRunner
-
 from usdassemble.cli import app
 from usdassemble.utils import ComponentType
 
@@ -57,7 +56,7 @@ class TestCompleteWorkflow:
 (
     defaultPrim = "${{component_name}}"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 def Xform "${{component_name}}" (
@@ -77,7 +76,7 @@ def Xform "${{component_name}}" (
         @./${component_name}_look.usd@,
         @./${component_name}_geom.usd@
     ]
-    upAxis = "Y"
+    upAxis = "Z"
 )
 """
 
@@ -86,7 +85,7 @@ def Xform "${{component_name}}" (
 (
     defaultPrim = "${component_name}"
     metersPerUnit = 1
-    upAxis = "Y"
+    upAxis = "Z"
 )
 
 over "${component_name}"
