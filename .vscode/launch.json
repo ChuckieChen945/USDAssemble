@@ -5,11 +5,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python 调试程序: 当前文件",
+      "name": "run usdassemble",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/src/main.py",
-      "args": ["D:\\chess_set\\"],
+      "program": "${workspaceFolder}/src/usdassemble/cli.py",
+      "args": [
+        "D:/scoop/apps/depl-openpbr-shader-playground/current/ShdrPlygrnd/ShdrPlygrnd_OpenPBR.usda"
+      ],
       "console": "integratedTerminal"
     }
   ]

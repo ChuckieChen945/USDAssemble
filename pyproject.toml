@@ -10,7 +10,6 @@ readme = "README.md"
 authors = [{ name = "Chuckie Chen", email = "chuckie_chen@outlook.com" }]
 requires-python = ">=3.12,<4.0"
 dependencies = [
-    "fastapi[all] (>=0.115.6)",
     "gunicorn (>=23.0.0)",
     "materialx>=1.39.3",
     "poethepoet (>=0.32.1)",
@@ -18,8 +17,8 @@ dependencies = [
     "usd-core>=25.5.1",
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/"]
+[project.scripts] # https://docs.astral.sh/uv/concepts/projects/config/#command-line-interfaces
+usdassemble = "usdassemble.cli:app"
 
 [project.urls] # https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
 homepage = "https://github.com/ChuckieChen945/USDAssemble"
