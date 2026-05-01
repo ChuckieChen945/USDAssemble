@@ -10,11 +10,11 @@ readme = "README.md"
 authors = [{ name = "Chuckie Chen", email = "chuckie_chen@outlook.com" }]
 requires-python = ">=3.12,<4.0"
 dependencies = [
-    "gunicorn (>=23.0.0)",
-    "materialx>=1.39.3",
-    "poethepoet (>=0.32.1)",
-    "typer (>=0.15.1)",
-    "usd-core>=25.5.1",
+    "gunicorn (>=25.3.0)",
+    "materialx>=1.39.4",
+    "poethepoet (>=0.45.0)",
+    "typer (>=0.25.1)",
+    "usd-core>=26.5",
 ]
 
 [project.scripts] # https://docs.astral.sh/uv/concepts/projects/config/#command-line-interfaces
